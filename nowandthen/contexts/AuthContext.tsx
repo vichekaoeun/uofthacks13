@@ -46,10 +46,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Try to fetch runtime API base from backend /config endpoint.
+  const getRuntimeApiBase = async () => {
+    try {
+      // derive server root from API_URL (which is like http://host:port/api)
+      const root = API_URL.replace(/\/api\/?$/, '');
+      const res = await fetch(`${root}/config`);
+      if (!res.ok) return API_URL;
+      const data = await res.json();
+      return data.apiBase || API_URL;
+    } catch (err) {
+      return API_URL;
+    }
+  };
+
   const login = async (email: string, password: string) => {
     try {
-      console.log('Attempting login to:', `${API_URL}/users/login`);
-      const response = await fetch(`${API_URL}/users/login`, {
+      const runtimeBase = await getRuntimeApiBase();
+      console.log('Attempting login to:', `${runtimeBase}/users/login`);
+      const response = await fetch(`${runtimeBase}/users/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

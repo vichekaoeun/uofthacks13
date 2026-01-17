@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import * as ImagePicker from 'expo-image-picker';
+import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +27,59 @@ const FALLBACK_REGION: Region = {
 type MapMode = 'discover' | 'follow';
 const FOLLOW_DELTA = 0.001;
 const PAN_AWAY_METERS = 60;
+// Simple minimal map style - adjust colors as needed
+const MINIMAL_MAP_STYLE = [
+  {
+    elementType: 'geometry',
+    stylers: [{ color: '#F5F5F1' }], // land
+  },
+  {
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'on' }], // Show icons
+  },
+  {
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#616161' }], // Darker text
+  },
+  {
+    elementType: 'labels.text.stroke',
+    stylers: [{ color: '#f5f5f5' }], // Light stroke
+  },
+  {
+    featureType: 'poi',
+    stylers: [{ visibility: 'on' }], // Hide points of interest
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#F5F5F1' }], // White roads
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels',
+    stylers: [{ visibility: 'on' }], // Hide road labels
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#CDD5E2' }], // water
+  },
+  {
+    featureType: 'water',
+    elementType: 'labels.text',
+    stylers: [{ visibility: 'on' }],
+  },
+  {
+  featureType: 'landscape.man_made',
+  elementType: 'geometry',
+  stylers: [{ color: '#E3E3D4' }], // Building color
+},
+];
+
+type MediaAttachment = {
+  uri: string;
+  type: 'photo' | 'video';
+};
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
@@ -44,7 +98,7 @@ export default function HomeScreen() {
   const { user, logout } = useAuth();
   const [showPostModal, setShowPostModal] = useState(false);
   const [postContent, setPostContent] = useState('');
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [mediaAttachment, setMediaAttachment] = useState<MediaAttachment | null>(null);
 
   const handleLogout = () => {
     Alert.alert(
@@ -208,10 +262,10 @@ export default function HomeScreen() {
 
   const handlePost = () => {
     if (postContent.trim()) {
-      console.log('Posting:', postContent, 'Photo:', selectedPhoto);
+      console.log('Posting:', postContent, 'Media:', mediaAttachment);
       // Handle post submission here
       setPostContent('');
-      setSelectedPhoto(null);
+      setMediaAttachment(null);
       setShowPostModal(false);
     }
   };
@@ -225,7 +279,7 @@ export default function HomeScreen() {
     });
 
     if (!result.canceled) {
-      setSelectedPhoto(result.assets[0].uri);
+      setMediaAttachment({ uri: result.assets[0].uri, type: 'photo' });
     }
   };
 
@@ -238,12 +292,43 @@ export default function HomeScreen() {
     });
 
     if (!result.canceled) {
-      setSelectedPhoto(result.assets[0].uri);
+      setMediaAttachment({ uri: result.assets[0].uri, type: 'photo' });
     }
   };
 
-  const handleAddPhoto = () => {
-    Alert.alert('Add Photo', 'How would you like to add a photo?', [
+  const recordVideo = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['videos'],
+      videoMaxDuration: 60,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setMediaAttachment({ uri: result.assets[0].uri, type: 'video' });
+    }
+  };
+
+  const pickVideo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setMediaAttachment({ uri: result.assets[0].uri, type: 'video' });
+    }
+  };
+
+  const handleAddMedia = () => {
+    Alert.alert('Add Media', 'Choose how to attach media.', [
+      {
+        text: 'Record Video',
+        onPress: recordVideo,
+      },
+      {
+        text: 'Choose Video',
+        onPress: pickVideo,
+      },
       {
         text: 'Take Photo',
         onPress: takePhoto,
@@ -281,6 +366,11 @@ export default function HomeScreen() {
         initialRegion={region}
         onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
+        onRegionChangeComplete={setRegion}
+        {...(Platform.OS === 'android' 
+          ? { customMapStyle: MINIMAL_MAP_STYLE }
+          : { mapType: 'mutedStandard' }
+        )}
         showsUserLocation
         showsMyLocationButton>
         {currentLocation ? (
@@ -386,24 +476,34 @@ export default function HomeScreen() {
                   onChangeText={setPostContent}
                 />
 
-                {/* Selected Photo */}
-                {selectedPhoto && (
-                  <View style={styles.photoContainer}>
-                    <Image source={{ uri: selectedPhoto }} style={styles.selectedPhoto} />
+                {/* Selected Media */}
+                {mediaAttachment && (
+                  <View style={styles.mediaContainer}>
+                    {mediaAttachment.type === 'photo' ? (
+                      <Image source={{ uri: mediaAttachment.uri }} style={styles.selectedMedia} />
+                    ) : (
+                      <Video
+                        style={styles.selectedMedia}
+                        source={{ uri: mediaAttachment.uri }}
+                        useNativeControls
+                        resizeMode={ResizeMode.COVER}
+                        isLooping
+                      />
+                    )}
                     <Pressable
-                      style={styles.removePhotoButton}
-                      onPress={() => setSelectedPhoto(null)}
+                      style={styles.removeMediaButton}
+                      onPress={() => setMediaAttachment(null)}
                     >
                       <Ionicons name="close-circle" size={28} color="#fff" />
                     </Pressable>
                   </View>
                 )}
 
-                {/* Photo Upload Button */}
-                <Pressable style={styles.photoButton} onPress={handleAddPhoto}>
+                {/* Media Upload Button */}
+                <Pressable style={styles.mediaButton} onPress={handleAddMedia}>
                   <Ionicons name="image" size={24} color="#007AFF" />
                   <ThemedText type="defaultSemiBold" style={{ color: '#007AFF', marginLeft: 8 }}>
-                    Add Photo
+                    Add Photo or Video
                   </ThemedText>
                 </Pressable>
               </ScrollView>
@@ -551,26 +651,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 20,
   },
-  photoContainer: {
+  mediaContainer: {
     position: 'relative',
     marginHorizontal: 16,
     marginTop: 12,
     borderRadius: 12,
     overflow: 'hidden',
   },
-  selectedPhoto: {
+  selectedMedia: {
     width: '100%',
     height: 200,
     borderRadius: 12,
   },
-  removePhotoButton: {
+  removeMediaButton: {
     position: 'absolute',
     top: 8,
     right: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderRadius: 20,
   },
-  photoButton: {
+  mediaButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
