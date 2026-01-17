@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuth } from '@/contexts/AuthContext';
 
 const FALLBACK_REGION: Region = {
   latitude: 43.6532,
@@ -24,6 +25,24 @@ export default function HomeScreen() {
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Logout', 
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+          }
+        },
+      ]
+    );
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -116,14 +135,24 @@ export default function HomeScreen() {
               latitude: currentLocation.coords.latitude,
               longitude: currentLocation.coords.longitude,
             }}
-            title=" You"
+            title="You"
           />
         ) : null}
       </MapView>
 
       <View style={overlayStyle}>
-        <ThemedText type="title">HereAndNow</ThemedText>
-        <ThemedText>Nearby memories are displayed on the map.</ThemedText>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <ThemedText type="title">HereAndNow</ThemedText>
+            <ThemedText>Nearby memories are displayed on the map.</ThemedText>
+            {user && <ThemedText style={styles.userInfo}>Logged in as: {user.username}</ThemedText>}
+          </View>
+          {user && (
+            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+              <ThemedText style={styles.logoutText}>Logout</ThemedText>
+            </TouchableOpacity>
+          )}
+        </View>
         {errorMessage ? <ThemedText>{errorMessage}</ThemedText> : null}
         {loading ? (
           <ActivityIndicator style={styles.spinner} />
@@ -156,6 +185,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 4,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  userInfo: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  logoutBtn: {
+    backgroundColor: '#FF3B30',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  logoutText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
   },
   button: {
     alignSelf: 'flex-start',
