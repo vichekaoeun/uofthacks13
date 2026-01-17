@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, View, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Image, ScrollView, Alert, useWindowDimensions } from 'react-native';
-import MapView, { Marker, Polyline, Region } from 'react-native-maps';
+import MapView, { Marker, Region, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
@@ -120,9 +120,16 @@ export default function HomeScreen() {
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [commentRadius, setCommentRadius] = useState(500);
+
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [isAnimatingPath, setIsAnimatingPath] = useState(false);
   const [animatedPathProgress, setAnimatedPathProgress] = useState(0);
+
+  const [selectedComment, setSelectedComment] = useState<CommentItem | null>(null);
+  const wasInFollowModeRef = useRef(false);
+
+  const lastPostTimeRef = useRef<number>(0);
+  const fetchCommentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleLogout = () => {
     Alert.alert(
@@ -189,9 +196,13 @@ export default function HomeScreen() {
 
       locationWatchRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 1000,
-          distanceInterval: 10,
+          accuracy:
+            Platform.OS === 'ios'
+              ? Location.Accuracy.BestForNavigation
+              : Location.Accuracy.Balanced,
+          timeInterval: Platform.OS === 'ios' ? 500 : 1000,
+          distanceInterval: Platform.OS === 'ios' ? 1 : 10,
+          mayShowUserSettingsDialog: true,
         },
         (position) => {
           setCurrentLocation(position);
@@ -252,9 +263,17 @@ export default function HomeScreen() {
     }
   };
 
+  const handleCloseComment = () => {
+    setSelectedComment(null);
+    if (wasInFollowModeRef.current) {
+      handleRecenter();
+    }
+  };
+
   const handleRegionChange = (nextRegion: Region) => {
     if (isAnimatingRef.current) return;
     if (!currentLocation) return;
+    if (selectedComment) return; // Don't exit focus mode while viewing a comment
 
     const zoomedOut = nextRegion.latitudeDelta > FOLLOW_DELTA + 0.00005;
     const distanceMeters = getDistanceMeters(
@@ -281,157 +300,160 @@ export default function HomeScreen() {
   }, [mode, vignetteOpacity]);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      const fetchComments = async () => {
-        if (!currentLocation) return;
-        try {
-          const data = await commentsAPI.getNearby(
-            currentLocation.coords.latitude,
-            currentLocation.coords.longitude,
-            commentRadius,
-            user?._id
-          );
-          setComments(Array.isArray(data) ? data : []);
-        } catch (error) {
-          console.log('Failed to load comments', error);
-        }
-      };
+  // Debounce and prevent overwriting optimistically added comments
+  if (fetchCommentsTimeoutRef.current) {
+    clearTimeout(fetchCommentsTimeoutRef.current);
+  }
 
-      void fetchComments();
-    }, 500);
+  fetchCommentsTimeoutRef.current = setTimeout(async () => {
+    if (!currentLocation) return;
 
-    return () => clearTimeout(timeoutId);
-  }, [currentLocation, user, commentRadius]);
+    // Skip fetch if we just posted a comment (within 2 seconds)
+    const timeSinceLastPost = Date.now() - lastPostTimeRef.current;
+    if (timeSinceLastPost < 2000) return;
 
-  // Filter and sort comments by user for path animation
-  const getUserComments = (userId: string) => {
-    return comments
-      .filter(c => c.userId === userId)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    try {
+      const data = await commentsAPI.getNearby(
+        currentLocation.coords.latitude,
+        currentLocation.coords.longitude,
+        commentRadius,
+        user?._id
+      );
+      setComments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.log('Failed to load comments', error);
+    }
+  }, 500);
+
+  return () => {
+    if (fetchCommentsTimeoutRef.current) {
+      clearTimeout(fetchCommentsTimeoutRef.current);
+    }
   };
+}, [currentLocation, user, commentRadius]);
 
-  // Catmull-Rom spline interpolation for smooth, artful curves
-  const catmullRomSpline = (p0: {latitude: number, longitude: number}, p1: {latitude: number, longitude: number}, p2: {latitude: number, longitude: number}, p3: {latitude: number, longitude: number}, t: number) => {
-    const t2 = t * t;
-    const t3 = t2 * t;
-    
-    const latitude = 0.5 * (
-      (2 * p1.latitude) +
+// Filter and sort comments by user for path animation
+const getUserComments = (userId: string) => {
+  return comments
+    .filter((c) => c.userId === userId)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+};
+
+// Catmull-Rom spline interpolation for smooth, artful curves
+const catmullRomSpline = (
+  p0: { latitude: number; longitude: number },
+  p1: { latitude: number; longitude: number },
+  p2: { latitude: number; longitude: number },
+  p3: { latitude: number; longitude: number },
+  t: number
+) => {
+  const t2 = t * t;
+  const t3 = t2 * t;
+
+  const latitude =
+    0.5 *
+    ((2 * p1.latitude) +
       (-p0.latitude + p2.latitude) * t +
       (2 * p0.latitude - 5 * p1.latitude + 4 * p2.latitude - p3.latitude) * t2 +
-      (-p0.latitude + 3 * p1.latitude - 3 * p2.latitude + p3.latitude) * t3
-    );
-    
-    const longitude = 0.5 * (
-      (2 * p1.longitude) +
+      (-p0.latitude + 3 * p1.latitude - 3 * p2.latitude + p3.latitude) * t3);
+
+  const longitude =
+    0.5 *
+    ((2 * p1.longitude) +
       (-p0.longitude + p2.longitude) * t +
       (2 * p0.longitude - 5 * p1.longitude + 4 * p2.longitude - p3.longitude) * t2 +
-      (-p0.longitude + 3 * p1.longitude - 3 * p2.longitude + p3.longitude) * t3
-    );
-    
-    return { latitude, longitude };
-  };
+      (-p0.longitude + 3 * p1.longitude - 3 * p2.longitude + p3.longitude) * t3);
 
-  // Create smooth, artful curved path from all user comments
-  const getInterpolatedPath = (userComments: CommentItem[]) => {
-    if (userComments.length < 2) return [];
-    
-    const points = userComments.map(c => ({
-      latitude: c.location.coordinates[1],
-      longitude: c.location.coordinates[0],
-    }));
-    
-    const interpolatedPath = [];
-    const numPointsPerSegment = 30; // More points for ultra-smooth curves
-    
-    // Add the first point
-    interpolatedPath.push(points[0]);
-    
-    for (let i = 0; i < points.length - 1; i++) {
-      // Get control points for Catmull-Rom spline
-      const p0 = points[Math.max(0, i - 1)];
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const p3 = points[Math.min(points.length - 1, i + 2)];
-      
-      // Generate curve points
-      for (let j = 1; j <= numPointsPerSegment; j++) {
-        const t = j / numPointsPerSegment;
-        const point = catmullRomSpline(p0, p1, p2, p3, t);
-        interpolatedPath.push(point);
-      }
+  return { latitude, longitude };
+};
+
+// Create smooth, artful curved path from all user comments
+const getInterpolatedPath = (userComments: CommentItem[]) => {
+  if (userComments.length < 2) return [];
+
+  const points = userComments.map((c) => ({
+    latitude: c.location.coordinates[1],
+    longitude: c.location.coordinates[0],
+  }));
+
+  const interpolatedPath: { latitude: number; longitude: number }[] = [];
+  const numPointsPerSegment = 30;
+
+  interpolatedPath.push(points[0]);
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+
+    for (let j = 1; j <= numPointsPerSegment; j++) {
+      const t = j / numPointsPerSegment;
+      interpolatedPath.push(catmullRomSpline(p0, p1, p2, p3, t));
     }
-    
-    return interpolatedPath;
-  };
+  }
 
-  // Handle marker press to start path animation
-  const handleMarkerPress = (comment: CommentItem) => {
-    // Only allow path animation for non-anonymous friends
-    if (comment.displayUsername === 'anonymous') {
-      return;
-    }
+  return interpolatedPath;
+};
 
-    const userComments = getUserComments(comment.userId);
-    
-    // Only start animation if user has more than one comment
-    if (userComments.length > 1) {
-      setSelectedUserId(comment.userId);
-      setAnimatedPathProgress(0);
-      setIsAnimatingPath(true);
-      
-      // Fit all comments in view
-      fitPathToView(userComments);
-      
-      // Start animating the line
-      animatePathLine(userComments.length);
-    }
-  };
+// Handle marker press to start path animation
+const handleMarkerPress = (comment: CommentItem) => {
+  if (comment.displayUsername === 'anonymous') return;
 
-  // Fit all path comments in the map view
-  const fitPathToView = (userComments: CommentItem[]) => {
-    const coordinates = userComments.map(c => ({
-      latitude: c.location.coordinates[1],
-      longitude: c.location.coordinates[0],
-    }));
+  const userComments = getUserComments(comment.userId);
+  if (userComments.length <= 1) return;
 
-    if (coordinates.length > 0) {
-      setMode('discover');
-      isAnimatingRef.current = true;
-      mapRef.current?.fitToCoordinates(coordinates, {
-        edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
-        animated: true,
-      });
+  setSelectedUserId(comment.userId);
+  setAnimatedPathProgress(0);
+  setIsAnimatingPath(true);
+
+  fitPathToView(userComments);
+  animatePathLine(userComments.length);
+};
+
+// Fit all path comments in the map view
+const fitPathToView = (userComments: CommentItem[]) => {
+  const coordinates = userComments.map((c) => ({
+    latitude: c.location.coordinates[1],
+    longitude: c.location.coordinates[0],
+  }));
+
+  if (coordinates.length === 0) return;
+
+  setMode('discover');
+  isAnimatingRef.current = true;
+
+  mapRef.current?.fitToCoordinates(coordinates, {
+    edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
+    animated: true,
+  });
+
+  setTimeout(() => {
+    isAnimatingRef.current = false;
+  }, 1000);
+};
+
+// Animate the dotted line drawing progressively
+const animatePathLine = (_totalComments: number) => {
+  const duration = 4000;
+  const steps = 120;
+  const stepDuration = duration / steps;
+  let currentStep = 0;
+
+  const intervalId = setInterval(() => {
+    currentStep++;
+    setAnimatedPathProgress(currentStep / steps);
+
+    if (currentStep >= steps) {
+      clearInterval(intervalId);
       setTimeout(() => {
-        isAnimatingRef.current = false;
-      }, 1000);
+        setIsAnimatingPath(false);
+        setSelectedUserId(null);
+        setAnimatedPathProgress(0);
+      }, 10000);
     }
-  };
-
-  // Animate the dotted line drawing progressively
-  const animatePathLine = (totalComments: number) => {
-    const duration = 4000; // 4 seconds for smoother animation
-    const steps = 120; // More frames for ultra-smooth animation
-    const stepDuration = duration / steps;
-    let currentStep = 0;
-
-    const intervalId = setInterval(() => {
-      currentStep++;
-      const progress = currentStep / steps;
-      setAnimatedPathProgress(progress);
-
-      if (currentStep >= steps) {
-        clearInterval(intervalId);
-        // Keep the line visible for a moment, then end
-        setTimeout(() => {
-          setIsAnimatingPath(false);
-          setSelectedUserId(null);
-          setAnimatedPathProgress(0);
-        }, 10000);
-      }
-    }, stepDuration);
-  };
-
+  }, stepDuration);
+}; 
   const handlePost = async () => {
     if (!postContent.trim()) return;
 
@@ -450,7 +472,26 @@ export default function HomeScreen() {
           lon: currentLocation.coords.longitude,
           text: postContent.trim(),
         });
-        setComments((prev) => [created, ...prev]);
+        // Mark the time we posted to prevent fetch from overwriting
+        lastPostTimeRef.current = Date.now();
+        // Ensure the comment has the correct structure for display
+        const commentId = created._id || `temp-${Date.now()}`;
+        const newComment: CommentItem = {
+          _id: commentId,
+          userId: created.userId || user._id,
+          username: created.username || user.username,
+          displayUsername: created.displayUsername || user.username,
+          location: created.location || {
+            type: 'Point',
+            coordinates: [currentLocation.coords.longitude, currentLocation.coords.latitude],
+          },
+          content: created.content || {
+            text: postContent.trim(),
+            mediaUrl: null,
+          },
+          createdAt: created.createdAt || new Date().toISOString(),
+        };
+        setComments((prev) => [newComment, ...prev]);
         setPostContent('');
         setShowPostModal(false);
       } catch (error) {
@@ -561,6 +602,7 @@ export default function HomeScreen() {
       <MapView
         ref={mapRef}
         style={styles.map}
+        provider={Platform.OS === 'ios' ? PROVIDER_GOOGLE : undefined}
         initialRegion={region}
         onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
@@ -613,7 +655,21 @@ export default function HomeScreen() {
               }}
               title={comment.displayUsername || comment.username}
               description={comment.content?.text ?? ''}
-              onPress={() => handleMarkerPress(comment)}
+              onPress={() => {
+                // Try path animation first (only for non-anonymous users with >1 comment)
+                if (comment.displayUsername !== 'anonymous') {
+                  const userComments = getUserComments(comment.userId);
+                  if (userComments.length > 1) {
+                    handleMarkerPress(comment);
+                    return;
+                  }
+                }
+
+                // Otherwise open the comment sheet
+                wasInFollowModeRef.current = mode === 'follow';
+                setSelectedComment(comment);
+              }}  
+
             >
               <View style={[
                 styles.markerPin,
@@ -656,6 +712,34 @@ export default function HomeScreen() {
           <Rect width={width} height={height} fill="url(#vignette)" />
         </Svg>
       </Animated.View>
+
+      {selectedComment ? (
+        <Pressable
+          style={styles.commentSheetBackdrop}
+          onPress={handleCloseComment}>
+          <View
+            style={[
+              styles.commentSheet,
+              {
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                borderColor: Colors[colorScheme ?? 'light'].text + '20',
+              },
+            ]}>
+            <View style={styles.commentSheetHeader}>
+              <ThemedText type="defaultSemiBold">{selectedComment.username}</ThemedText>
+              <Pressable onPress={handleCloseComment}>
+                <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
+              </Pressable>
+            </View>
+            <ThemedText style={styles.commentSheetText}>
+              {selectedComment.content?.text || '—'}
+            </ThemedText>
+            <ThemedText style={styles.commentSheetMeta}>
+              {new Date(selectedComment.createdAt).toLocaleString()}
+            </ThemedText>
+          </View>
+        </Pressable>
+      ) : null}
 
       <View style={overlayStyle}>
         <View style={styles.headerRow}>
@@ -1098,5 +1182,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#007AFF',
     borderStyle: 'dashed',
+  },
+  commentSheetBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    padding: 24,
+  },
+  commentSheet: {
+    width: '100%',
+    maxWidth: 360,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  commentSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  commentSheetText: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  commentSheetMeta: {
+    fontSize: 12,
+    opacity: 0.6,
   },
 });
