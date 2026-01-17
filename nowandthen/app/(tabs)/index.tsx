@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, View, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Image, ScrollView, Alert, useWindowDimensions } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Region, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
@@ -118,6 +118,8 @@ export default function HomeScreen() {
   const [composeMode, setComposeMode] = useState<'post' | 'comment'>('post');
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const lastPostTimeRef = useRef<number>(0);
+  const fetchCommentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleLogout = () => {
     Alert.alert(
@@ -184,9 +186,10 @@ export default function HomeScreen() {
 
       locationWatchRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 200,
-          distanceInterval: 3,
+          accuracy: Platform.OS === 'ios' ? Location.Accuracy.BestForNavigation : Location.Accuracy.Balanced,
+          timeInterval: Platform.OS === 'ios' ? 500 : 200,
+          distanceInterval: Platform.OS === 'ios' ? 1 : 3,
+          mayShowUserSettingsDialog: true,
         },
         (position) => {
           setCurrentLocation(position);
@@ -280,8 +283,18 @@ export default function HomeScreen() {
   }, [mode, vignetteOpacity]);
 
   useEffect(() => {
-    const fetchComments = async () => {
+    // Debounce and prevent overwriting optimistically added comments
+    if (fetchCommentsTimeoutRef.current) {
+      clearTimeout(fetchCommentsTimeoutRef.current);
+    }
+
+    fetchCommentsTimeoutRef.current = setTimeout(async () => {
       if (!currentLocation) return;
+      
+      // Skip fetch if we just posted a comment (within 2 seconds)
+      const timeSinceLastPost = Date.now() - lastPostTimeRef.current;
+      if (timeSinceLastPost < 2000) return;
+
       try {
         const data = await commentsAPI.getNearby(
           currentLocation.coords.latitude,
@@ -292,9 +305,13 @@ export default function HomeScreen() {
       } catch (error) {
         console.log('Failed to load comments', error);
       }
-    };
+    }, 500);
 
-    void fetchComments();
+    return () => {
+      if (fetchCommentsTimeoutRef.current) {
+        clearTimeout(fetchCommentsTimeoutRef.current);
+      }
+    };
   }, [currentLocation]);
 
   const handlePost = async () => {
@@ -315,7 +332,33 @@ export default function HomeScreen() {
           lon: currentLocation.coords.longitude,
           text: postContent.trim(),
         });
-        setComments((prev) => [created, ...prev]);
+        console.log('Created comment response:', JSON.stringify(created, null, 2));
+        // Mark the time we posted to prevent fetch from overwriting
+        lastPostTimeRef.current = Date.now();
+        // Ensure the comment has the correct structure for display
+        // Generate a temporary ID if backend didn't return one
+        const commentId = created._id || `temp-${Date.now()}`;
+        const newComment: CommentItem = {
+          _id: commentId,
+          userId: created.userId || user._id,
+          username: created.username || user.username,
+          location: created.location || {
+            type: 'Point',
+            coordinates: [currentLocation.coords.longitude, currentLocation.coords.latitude],
+          },
+          content: created.content || {
+            text: postContent.trim(),
+            mediaUrl: null,
+          },
+          createdAt: created.createdAt || new Date().toISOString(),
+        };
+        console.log('New comment to add:', JSON.stringify(newComment, null, 2));
+        setComments((prev) => {
+          console.log('Previous comments count:', prev.length);
+          const updated = [newComment, ...prev];
+          console.log('Updated comments count:', updated.length);
+          return updated;
+        });
         setPostContent('');
         setShowPostModal(false);
       } catch (error) {
@@ -426,23 +469,15 @@ export default function HomeScreen() {
       <MapView
         ref={mapRef}
         style={styles.map}
+        provider={Platform.OS === 'ios' ? PROVIDER_GOOGLE : undefined}
         initialRegion={region}
         onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation
         showsMyLocationButton>
-        {currentLocation ? (
-          <Marker
-            coordinate={{
-              latitude: currentLocation.coords.latitude,
-              longitude: currentLocation.coords.longitude,
-            }}
-            title="You"
-          />
-        ) : null}
         {comments.map((comment) => (
           <Marker
-            key={comment._id}
+            key={`${comment._id}-${comment.createdAt}`}
             coordinate={{
               latitude: comment.location.coordinates[1],
               longitude: comment.location.coordinates[0],

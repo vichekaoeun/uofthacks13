@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nowandthen.app",
+      "config": {
+        "googleMapsApiKey": "AIzaSyDhzULOwQkwcj5kT01ZVhR0DbXYqgZARNo"
+      }
     },
     "android": {
       "adaptiveIcon": {
