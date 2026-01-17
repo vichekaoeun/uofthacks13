@@ -1,5 +1,5 @@
 const { ObjectId } = require('mongodb');
-const { getDB } = require('../config/database');
+const { getDB } = require('../database');
 
 exports.getComments = async (req, res) => {
   try {

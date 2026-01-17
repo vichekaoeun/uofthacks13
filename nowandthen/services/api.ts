@@ -80,4 +80,23 @@ export const friendsAPI = {
   },
 };
 
+// Comments API
+export const commentsAPI = {
+  getNearby: async (lat: number, lon: number, radius = 500) => {
+    const response = await api.get('/comments', { params: { lat, lon, radius } });
+    return response.data;
+  },
+
+  create: async (payload: {
+    userId: string;
+    username: string;
+    lat: number;
+    lon: number;
+    text: string;
+  }) => {
+    const response = await api.post('/comments', payload);
+    return response.data;
+  },
+};
+
 export default api;
