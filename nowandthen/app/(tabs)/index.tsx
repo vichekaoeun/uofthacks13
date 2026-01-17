@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, View, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Image, ScrollView, Alert, useWindowDimensions } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
@@ -120,6 +120,9 @@ export default function HomeScreen() {
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [commentRadius, setCommentRadius] = useState(500);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [isAnimatingPath, setIsAnimatingPath] = useState(false);
+  const [animatedPathProgress, setAnimatedPathProgress] = useState(0);
 
   const handleLogout = () => {
     Alert.alert(
@@ -300,6 +303,135 @@ export default function HomeScreen() {
     return () => clearTimeout(timeoutId);
   }, [currentLocation, user, commentRadius]);
 
+  // Filter and sort comments by user for path animation
+  const getUserComments = (userId: string) => {
+    return comments
+      .filter(c => c.userId === userId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  };
+
+  // Catmull-Rom spline interpolation for smooth, artful curves
+  const catmullRomSpline = (p0: {latitude: number, longitude: number}, p1: {latitude: number, longitude: number}, p2: {latitude: number, longitude: number}, p3: {latitude: number, longitude: number}, t: number) => {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    
+    const latitude = 0.5 * (
+      (2 * p1.latitude) +
+      (-p0.latitude + p2.latitude) * t +
+      (2 * p0.latitude - 5 * p1.latitude + 4 * p2.latitude - p3.latitude) * t2 +
+      (-p0.latitude + 3 * p1.latitude - 3 * p2.latitude + p3.latitude) * t3
+    );
+    
+    const longitude = 0.5 * (
+      (2 * p1.longitude) +
+      (-p0.longitude + p2.longitude) * t +
+      (2 * p0.longitude - 5 * p1.longitude + 4 * p2.longitude - p3.longitude) * t2 +
+      (-p0.longitude + 3 * p1.longitude - 3 * p2.longitude + p3.longitude) * t3
+    );
+    
+    return { latitude, longitude };
+  };
+
+  // Create smooth, artful curved path from all user comments
+  const getInterpolatedPath = (userComments: CommentItem[]) => {
+    if (userComments.length < 2) return [];
+    
+    const points = userComments.map(c => ({
+      latitude: c.location.coordinates[1],
+      longitude: c.location.coordinates[0],
+    }));
+    
+    const interpolatedPath = [];
+    const numPointsPerSegment = 30; // More points for ultra-smooth curves
+    
+    // Add the first point
+    interpolatedPath.push(points[0]);
+    
+    for (let i = 0; i < points.length - 1; i++) {
+      // Get control points for Catmull-Rom spline
+      const p0 = points[Math.max(0, i - 1)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(points.length - 1, i + 2)];
+      
+      // Generate curve points
+      for (let j = 1; j <= numPointsPerSegment; j++) {
+        const t = j / numPointsPerSegment;
+        const point = catmullRomSpline(p0, p1, p2, p3, t);
+        interpolatedPath.push(point);
+      }
+    }
+    
+    return interpolatedPath;
+  };
+
+  // Handle marker press to start path animation
+  const handleMarkerPress = (comment: CommentItem) => {
+    // Only allow path animation for non-anonymous friends
+    if (comment.displayUsername === 'anonymous') {
+      return;
+    }
+
+    const userComments = getUserComments(comment.userId);
+    
+    // Only start animation if user has more than one comment
+    if (userComments.length > 1) {
+      setSelectedUserId(comment.userId);
+      setAnimatedPathProgress(0);
+      setIsAnimatingPath(true);
+      
+      // Fit all comments in view
+      fitPathToView(userComments);
+      
+      // Start animating the line
+      animatePathLine(userComments.length);
+    }
+  };
+
+  // Fit all path comments in the map view
+  const fitPathToView = (userComments: CommentItem[]) => {
+    const coordinates = userComments.map(c => ({
+      latitude: c.location.coordinates[1],
+      longitude: c.location.coordinates[0],
+    }));
+
+    if (coordinates.length > 0) {
+      setMode('discover');
+      isAnimatingRef.current = true;
+      mapRef.current?.fitToCoordinates(coordinates, {
+        edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
+        animated: true,
+      });
+      setTimeout(() => {
+        isAnimatingRef.current = false;
+      }, 1000);
+    }
+  };
+
+  // Animate the dotted line drawing progressively
+  const animatePathLine = (totalComments: number) => {
+    const duration = 4000; // 4 seconds for smoother animation
+    const steps = 120; // More frames for ultra-smooth animation
+    const stepDuration = duration / steps;
+    let currentStep = 0;
+
+    const intervalId = setInterval(() => {
+      currentStep++;
+      const progress = currentStep / steps;
+      setAnimatedPathProgress(progress);
+
+      if (currentStep >= steps) {
+        clearInterval(intervalId);
+        // Keep the line visible for a moment, then end
+        setTimeout(() => {
+          setIsAnimatingPath(false);
+          setSelectedUserId(null);
+          setAnimatedPathProgress(0);
+        }, 10000);
+      }
+    }, stepDuration);
+  };
+
   const handlePost = async () => {
     if (!postContent.trim()) return;
 
@@ -443,8 +575,35 @@ export default function HomeScreen() {
             title="You"
           />
         ) : null}
-        {comments.map((comment) => {
+        
+        {/* Path Polyline - connects comments in chronological order */}
+        {isAnimatingPath && selectedUserId && (() => {
+          const userComments = getUserComments(selectedUserId);
+          const fullPath = getInterpolatedPath(userComments);
+          const numPointsToShow = Math.floor(animatedPathProgress * fullPath.length);
+          const coordinatesToShow = fullPath.slice(0, Math.max(2, numPointsToShow));
+
+          return coordinatesToShow.length > 1 ? (
+            <Polyline
+              coordinates={coordinatesToShow}
+              strokeColor="#7B61FF"
+              strokeWidth={5}
+              lineDashPattern={[0.1, 12]}
+              lineCap="round"
+              lineJoin="round"
+            />
+          ) : null;
+        })()}
+        
+        {comments.map((comment, idx) => {
           const isAnonymous = comment.displayUsername === 'anonymous';
+          const isSelectedUser = selectedUserId === comment.userId;
+          const userComments = isSelectedUser ? getUserComments(comment.userId) : [];
+          const commentIndex = isSelectedUser ? userComments.findIndex(c => c._id === comment._id) : -1;
+          const progressThreshold = commentIndex / Math.max(1, userComments.length - 1);
+          const isRevealed = isSelectedUser && isAnimatingPath && animatedPathProgress >= progressThreshold;
+          const isInPath = isSelectedUser && isAnimatingPath;
+          
           return (
             <Marker
               key={comment._id}
@@ -454,11 +613,26 @@ export default function HomeScreen() {
               }}
               title={comment.displayUsername || comment.username}
               description={comment.content?.text ?? ''}
+              onPress={() => handleMarkerPress(comment)}
             >
               <View style={[
                 styles.markerPin,
-                { backgroundColor: isAnonymous ? '#808080' : '#2d8941' }
-              ]} />
+                { 
+                  backgroundColor: isAnonymous ? '#808080' : '#2d8941',
+                  width: isInPath ? 28 : 24,
+                  height: isInPath ? 28 : 24,
+                  borderRadius: isInPath ? 14 : 12,
+                  borderWidth: isInPath ? 3 : 2,
+                  borderColor: isInPath ? (isRevealed ? '#7B61FF' : '#FFA500') : 'white',
+                  opacity: isInPath ? (isRevealed ? 1 : 0.4) : 1,
+                }
+              ]}>
+                {isInPath && (
+                  <View style={styles.pathNumberContainer}>
+                    <ThemedText style={styles.pathNumber}>{commentIndex + 1}</ThemedText>
+                  </View>
+                )}
+              </View>
             </Marker>
           );
         })}
@@ -687,6 +861,43 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pathNumberContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pathNumber: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  pathAnimationStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: 'rgba(123, 97, 255, 0.15)',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#7B61FF',
+    gap: 12,
+  },
+  pathProgress: {
+    fontSize: 12,
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  stopButton: {
+    backgroundColor: '#FF3B30',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  stopButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
   vignetteSvg: {
     position: 'absolute',
@@ -714,6 +925,12 @@ const styles = StyleSheet.create({
   userInfo: {
     fontSize: 12,
     marginTop: 4,
+  },
+  instructionText: {
+    fontSize: 11,
+    marginTop: 4,
+    opacity: 0.6,
+    fontStyle: 'italic',
   },
   logoutBtn: {
     backgroundColor: '#FF3B30',
