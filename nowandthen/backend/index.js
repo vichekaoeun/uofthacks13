@@ -2,6 +2,22 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+const { MongoClient } = require('mongodb');
+
+const uri = process.env.MONGODB_URI;
+const client = new MongoClient(uri);
+
+async function connectDB() {
+  try {
+    await client.connect();
+    console.log('Connected to MongoDB');
+    const db = client.db('hereandnow');
+    return db;
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -17,6 +33,8 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT} and connected to the database`);
+  });
 });
