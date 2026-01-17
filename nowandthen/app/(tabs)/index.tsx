@@ -366,11 +366,6 @@ export default function HomeScreen() {
         initialRegion={region}
         onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
-        onRegionChangeComplete={setRegion}
-        {...(Platform.OS === 'android' 
-          ? { customMapStyle: MINIMAL_MAP_STYLE }
-          : { mapType: 'mutedStandard' }
-        )}
         showsUserLocation
         showsMyLocationButton>
         {currentLocation ? (
