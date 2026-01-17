@@ -118,6 +118,7 @@ export default function HomeScreen() {
   const [composeMode, setComposeMode] = useState<'post' | 'comment'>('post');
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [selectedComment, setSelectedComment] = useState<CommentItem | null>(null);
 
   const handleLogout = () => {
     Alert.alert(
@@ -450,9 +451,38 @@ export default function HomeScreen() {
             title={comment.username}
             description={comment.content?.text ?? ''}
             pinColor="#7B61FF"
+            onPress={() => setSelectedComment(comment)}
           />
         ))}
       </MapView>
+
+      {selectedComment ? (
+        <Pressable
+          style={styles.commentSheetBackdrop}
+          onPress={() => setSelectedComment(null)}>
+          <View
+            style={[
+              styles.commentSheet,
+              {
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                borderColor: Colors[colorScheme ?? 'light'].text + '20',
+              },
+            ]}>
+            <View style={styles.commentSheetHeader}>
+              <ThemedText type="defaultSemiBold">{selectedComment.username}</ThemedText>
+              <Pressable onPress={() => setSelectedComment(null)}>
+                <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
+              </Pressable>
+            </View>
+            <ThemedText style={styles.commentSheetText}>
+              {selectedComment.content?.text || '—'}
+            </ThemedText>
+            <ThemedText style={styles.commentSheetMeta}>
+              {new Date(selectedComment.createdAt).toLocaleString()}
+            </ThemedText>
+          </View>
+        </Pressable>
+      ) : null}
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: vignetteOpacity }]}>
         <Svg width={width} height={height} style={styles.vignetteSvg}>
@@ -791,5 +821,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#007AFF',
     borderStyle: 'dashed',
+  },
+  commentSheetBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    padding: 24,
+  },
+  commentSheet: {
+    width: '100%',
+    maxWidth: 360,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  commentSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  commentSheetText: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  commentSheetMeta: {
+    fontSize: 12,
+    opacity: 0.6,
   },
 });
