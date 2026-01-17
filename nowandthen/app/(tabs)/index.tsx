@@ -119,6 +119,7 @@ export default function HomeScreen() {
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [selectedComment, setSelectedComment] = useState<CommentItem | null>(null);
+  const wasInFollowModeRef = useRef(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -248,9 +249,17 @@ export default function HomeScreen() {
     }
   };
 
+  const handleCloseComment = () => {
+    setSelectedComment(null);
+    if (wasInFollowModeRef.current) {
+      handleRecenter();
+    }
+  };
+
   const handleRegionChange = (nextRegion: Region) => {
     if (isAnimatingRef.current) return;
     if (!currentLocation) return;
+    if (selectedComment) return; // Don't exit focus mode while viewing a comment
 
     const zoomedOut = nextRegion.latitudeDelta > FOLLOW_DELTA + 0.00005;
     const distanceMeters = getDistanceMeters(
@@ -451,38 +460,13 @@ export default function HomeScreen() {
             title={comment.username}
             description={comment.content?.text ?? ''}
             pinColor="#7B61FF"
-            onPress={() => setSelectedComment(comment)}
+            onPress={() => {
+              wasInFollowModeRef.current = mode === 'follow';
+              setSelectedComment(comment);
+            }}
           />
         ))}
       </MapView>
-
-      {selectedComment ? (
-        <Pressable
-          style={styles.commentSheetBackdrop}
-          onPress={() => setSelectedComment(null)}>
-          <View
-            style={[
-              styles.commentSheet,
-              {
-                backgroundColor: Colors[colorScheme ?? 'light'].background,
-                borderColor: Colors[colorScheme ?? 'light'].text + '20',
-              },
-            ]}>
-            <View style={styles.commentSheetHeader}>
-              <ThemedText type="defaultSemiBold">{selectedComment.username}</ThemedText>
-              <Pressable onPress={() => setSelectedComment(null)}>
-                <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
-              </Pressable>
-            </View>
-            <ThemedText style={styles.commentSheetText}>
-              {selectedComment.content?.text || '—'}
-            </ThemedText>
-            <ThemedText style={styles.commentSheetMeta}>
-              {new Date(selectedComment.createdAt).toLocaleString()}
-            </ThemedText>
-          </View>
-        </Pressable>
-      ) : null}
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: vignetteOpacity }]}>
         <Svg width={width} height={height} style={styles.vignetteSvg}>
@@ -502,6 +486,34 @@ export default function HomeScreen() {
           <Rect width={width} height={height} fill="url(#vignette)" />
         </Svg>
       </Animated.View>
+
+      {selectedComment ? (
+        <Pressable
+          style={styles.commentSheetBackdrop}
+          onPress={handleCloseComment}>
+          <View
+            style={[
+              styles.commentSheet,
+              {
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                borderColor: Colors[colorScheme ?? 'light'].text + '20',
+              },
+            ]}>
+            <View style={styles.commentSheetHeader}>
+              <ThemedText type="defaultSemiBold">{selectedComment.username}</ThemedText>
+              <Pressable onPress={handleCloseComment}>
+                <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
+              </Pressable>
+            </View>
+            <ThemedText style={styles.commentSheetText}>
+              {selectedComment.content?.text || '—'}
+            </ThemedText>
+            <ThemedText style={styles.commentSheetMeta}>
+              {new Date(selectedComment.createdAt).toLocaleString()}
+            </ThemedText>
+          </View>
+        </Pressable>
+      ) : null}
 
       <View style={overlayStyle}>
         <View style={styles.headerRow}>
