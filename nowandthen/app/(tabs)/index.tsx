@@ -119,6 +119,7 @@ export default function HomeScreen() {
   const [composeMode, setComposeMode] = useState<'post' | 'comment'>('post');
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [commentRadius, setCommentRadius] = useState(500);
 
   const handleLogout = () => {
     Alert.alert(
@@ -186,8 +187,8 @@ export default function HomeScreen() {
       locationWatchRef.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
-          timeInterval: 200,
-          distanceInterval: 3,
+          timeInterval: 1000,
+          distanceInterval: 10,
         },
         (position) => {
           setCurrentLocation(position);
@@ -272,32 +273,32 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-    Animated.timing(vignetteOpacity, {
-      toValue: mode === 'follow' ? 1 : 0,
-      duration: 500,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start();
+    // Vignette animation disabled for performance
+    vignetteOpacity.setValue(0);
   }, [mode, vignetteOpacity]);
 
   useEffect(() => {
-    const fetchComments = async () => {
-      if (!currentLocation) return;
-      try {
-        const data = await commentsAPI.getNearby(
-          currentLocation.coords.latitude,
-          currentLocation.coords.longitude,
-          500,
-          user?._id
-        );
-        setComments(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.log('Failed to load comments', error);
-      }
-    };
+    const timeoutId = setTimeout(() => {
+      const fetchComments = async () => {
+        if (!currentLocation) return;
+        try {
+          const data = await commentsAPI.getNearby(
+            currentLocation.coords.latitude,
+            currentLocation.coords.longitude,
+            commentRadius,
+            user?._id
+          );
+          setComments(Array.isArray(data) ? data : []);
+        } catch (error) {
+          console.log('Failed to load comments', error);
+        }
+      };
 
-    void fetchComments();
-  }, [currentLocation, user]);
+      void fetchComments();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [currentLocation, user, commentRadius]);
 
   const handlePost = async () => {
     if (!postContent.trim()) return;
@@ -454,19 +455,10 @@ export default function HomeScreen() {
               title={comment.displayUsername || comment.username}
               description={comment.content?.text ?? ''}
             >
-              <View style={{
-                width: 24,
-                height: 24,
-                borderRadius: 12,
-                backgroundColor: isAnonymous ? '#808080' : '#2d8941',
-                borderWidth: 2,
-                borderColor: 'white',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.25,
-                shadowRadius: 3.84,
-                elevation: 5,
-              }} />
+              <View style={[
+                styles.markerPin,
+                { backgroundColor: isAnonymous ? '#808080' : '#2d8941' }
+              ]} />
             </Marker>
           );
         })}
@@ -504,6 +496,39 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
         </View>
+        
+        {/* Radius Control */}
+        <View style={styles.radiusControl}>
+          <ThemedText style={styles.radiusLabel}>Comment Range: {commentRadius}m</ThemedText>
+          <View style={styles.radiusButtons}>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 25 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(25)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 25 && styles.radiusButtonTextActive]}>25m</ThemedText>
+            </Pressable>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 50 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(50)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 50 && styles.radiusButtonTextActive]}>50m</ThemedText>
+            </Pressable>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 100 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(100)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 100 && styles.radiusButtonTextActive]}>100m</ThemedText>
+            </Pressable>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 500 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(500)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 500 && styles.radiusButtonTextActive]}>500m</ThemedText>
+            </Pressable>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 1000 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(1000)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 1000 && styles.radiusButtonTextActive]}>1km</ThemedText>
+            </Pressable>
+          </View>
+        </View>
+        
         {errorMessage ? <ThemedText>{errorMessage}</ThemedText> : null}
         {loading ? (
           <ActivityIndicator style={styles.spinner} />
@@ -651,6 +676,18 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
+  markerPin: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
   vignetteSvg: {
     position: 'absolute',
     top: 0,
@@ -751,6 +788,41 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  radiusControl: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  radiusLabel: {
+    fontSize: 12,
+    marginBottom: 6,
+    opacity: 0.7,
+    fontWeight: '500',
+  },
+  radiusButtons: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  radiusButton: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  radiusButtonActive: {
+    backgroundColor: '#7B61FF',
+    borderColor: '#7B61FF',
+  },
+  radiusButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  radiusButtonTextActive: {
+    color: '#fff',
   },
   modeToggle: {
     flexDirection: 'row',
