@@ -82,8 +82,12 @@ export const friendsAPI = {
 
 // Comments API
 export const commentsAPI = {
-  getNearby: async (lat: number, lon: number, radius = 500) => {
-    const response = await api.get('/comments', { params: { lat, lon, radius } });
+  getNearby: async (lat: number, lon: number, radius = 500, requestingUserId?: string) => {
+    const params: any = { lat, lon, radius };
+    if (requestingUserId) {
+      params.requestingUserId = requestingUserId;
+    }
+    const response = await api.get('/comments', { params });
     return response.data;
   },
 

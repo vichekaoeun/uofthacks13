@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, View, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Image, ScrollView, Alert, useWindowDimensions } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Region, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
@@ -86,6 +86,7 @@ type CommentItem = {
   _id: string;
   userId: string;
   username: string;
+  displayUsername?: string;
   location: {
     type: 'Point';
     coordinates: [number, number];
@@ -120,6 +121,8 @@ export default function HomeScreen() {
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [selectedComment, setSelectedComment] = useState<CommentItem | null>(null);
   const wasInFollowModeRef = useRef(false);
+  const lastPostTimeRef = useRef<number>(0);
+  const fetchCommentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleLogout = () => {
     Alert.alert(
@@ -186,9 +189,10 @@ export default function HomeScreen() {
 
       locationWatchRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 200,
-          distanceInterval: 3,
+          accuracy: Platform.OS === 'ios' ? Location.Accuracy.BestForNavigation : Location.Accuracy.Balanced,
+          timeInterval: Platform.OS === 'ios' ? 500 : 200,
+          distanceInterval: Platform.OS === 'ios' ? 1 : 3,
+          mayShowUserSettingsDialog: true,
         },
         (position) => {
           setCurrentLocation(position);
@@ -290,22 +294,37 @@ export default function HomeScreen() {
   }, [mode, vignetteOpacity]);
 
   useEffect(() => {
-    const fetchComments = async () => {
+    // Debounce and prevent overwriting optimistically added comments
+    if (fetchCommentsTimeoutRef.current) {
+      clearTimeout(fetchCommentsTimeoutRef.current);
+    }
+
+    fetchCommentsTimeoutRef.current = setTimeout(async () => {
       if (!currentLocation) return;
+      
+      // Skip fetch if we just posted a comment (within 2 seconds)
+      const timeSinceLastPost = Date.now() - lastPostTimeRef.current;
+      if (timeSinceLastPost < 2000) return;
+
       try {
         const data = await commentsAPI.getNearby(
           currentLocation.coords.latitude,
           currentLocation.coords.longitude,
-          500
+          500,
+          user?._id
         );
         setComments(Array.isArray(data) ? data : []);
       } catch (error) {
         console.log('Failed to load comments', error);
       }
-    };
+    }, 500);
 
-    void fetchComments();
-  }, [currentLocation]);
+    return () => {
+      if (fetchCommentsTimeoutRef.current) {
+        clearTimeout(fetchCommentsTimeoutRef.current);
+      }
+    };
+  }, [currentLocation, user]);
 
   const handlePost = async () => {
     if (!postContent.trim()) return;
@@ -325,7 +344,26 @@ export default function HomeScreen() {
           lon: currentLocation.coords.longitude,
           text: postContent.trim(),
         });
-        setComments((prev) => [created, ...prev]);
+        // Mark the time we posted to prevent fetch from overwriting
+        lastPostTimeRef.current = Date.now();
+        // Ensure the comment has the correct structure for display
+        const commentId = created._id || `temp-${Date.now()}`;
+        const newComment: CommentItem = {
+          _id: commentId,
+          userId: created.userId || user._id,
+          username: created.username || user.username,
+          displayUsername: created.displayUsername || user.username,
+          location: created.location || {
+            type: 'Point',
+            coordinates: [currentLocation.coords.longitude, currentLocation.coords.latitude],
+          },
+          content: created.content || {
+            text: postContent.trim(),
+            mediaUrl: null,
+          },
+          createdAt: created.createdAt || new Date().toISOString(),
+        };
+        setComments((prev) => [newComment, ...prev]);
         setPostContent('');
         setShowPostModal(false);
       } catch (error) {
@@ -436,6 +474,7 @@ export default function HomeScreen() {
       <MapView
         ref={mapRef}
         style={styles.map}
+        provider={Platform.OS === 'ios' ? PROVIDER_GOOGLE : undefined}
         initialRegion={region}
         onRegionChange={handleRegionChange}
         onRegionChangeComplete={handleRegionChangeComplete}
@@ -450,22 +489,38 @@ export default function HomeScreen() {
             title="You"
           />
         ) : null}
-        {comments.map((comment) => (
-          <Marker
-            key={comment._id}
-            coordinate={{
-              latitude: comment.location.coordinates[1],
-              longitude: comment.location.coordinates[0],
-            }}
-            title={comment.username}
-            description={comment.content?.text ?? ''}
-            pinColor="#7B61FF"
-            onPress={() => {
-              wasInFollowModeRef.current = mode === 'follow';
-              setSelectedComment(comment);
-            }}
-          />
-        ))}
+        {comments.map((comment) => {
+          const isAnonymous = comment.displayUsername === 'anonymous';
+          return (
+            <Marker
+              key={comment._id}
+              coordinate={{
+                latitude: comment.location.coordinates[1],
+                longitude: comment.location.coordinates[0],
+              }}
+              title={comment.displayUsername || comment.username}
+              description={comment.content?.text ?? ''}
+              onPress={() => {
+                wasInFollowModeRef.current = mode === 'follow';
+                setSelectedComment(comment);
+              }}
+            >
+              <View style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: isAnonymous ? '#808080' : '#2d8941',
+                borderWidth: 2,
+                borderColor: 'white',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 3.84,
+                elevation: 5,
+              }} />
+            </Marker>
+          );
+        })}
       </MapView>
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: vignetteOpacity }]}>
