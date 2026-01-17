@@ -20,6 +20,13 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Expose runtime config (useful for client to read API host)
+app.get('/config', (req, res) => {
+  const host = process.env.API_HOST || 'localhost';
+  const apiBase = `http://${host}:${PORT}/api`;
+  res.json({ apiBase });
+});
+
 // Routes
 app.use('/api/users', userRoutes);
 
