@@ -86,6 +86,7 @@ type CommentItem = {
   _id: string;
   userId: string;
   username: string;
+  displayUsername?: string;
   location: {
     type: 'Point';
     coordinates: [number, number];
@@ -286,7 +287,8 @@ export default function HomeScreen() {
         const data = await commentsAPI.getNearby(
           currentLocation.coords.latitude,
           currentLocation.coords.longitude,
-          500
+          500,
+          user?._id
         );
         setComments(Array.isArray(data) ? data : []);
       } catch (error) {
@@ -295,7 +297,7 @@ export default function HomeScreen() {
     };
 
     void fetchComments();
-  }, [currentLocation]);
+  }, [currentLocation, user]);
 
   const handlePost = async () => {
     if (!postContent.trim()) return;
@@ -440,18 +442,34 @@ export default function HomeScreen() {
             title="You"
           />
         ) : null}
-        {comments.map((comment) => (
-          <Marker
-            key={comment._id}
-            coordinate={{
-              latitude: comment.location.coordinates[1],
-              longitude: comment.location.coordinates[0],
-            }}
-            title={comment.username}
-            description={comment.content?.text ?? ''}
-            pinColor="#7B61FF"
-          />
-        ))}
+        {comments.map((comment) => {
+          const isAnonymous = comment.displayUsername === 'anonymous';
+          return (
+            <Marker
+              key={comment._id}
+              coordinate={{
+                latitude: comment.location.coordinates[1],
+                longitude: comment.location.coordinates[0],
+              }}
+              title={comment.displayUsername || comment.username}
+              description={comment.content?.text ?? ''}
+            >
+              <View style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: isAnonymous ? '#808080' : '#2d8941',
+                borderWidth: 2,
+                borderColor: 'white',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 3.84,
+                elevation: 5,
+              }} />
+            </Marker>
+          );
+        })}
       </MapView>
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: vignetteOpacity }]}>
