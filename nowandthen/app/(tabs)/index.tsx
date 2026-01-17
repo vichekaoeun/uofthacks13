@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 
@@ -17,6 +18,7 @@ const FALLBACK_REGION: Region = {
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView | null>(null);
   const [region, setRegion] = useState<Region>(FALLBACK_REGION);
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
@@ -70,8 +72,8 @@ export default function HomeScreen() {
   }, []);
 
   const overlayStyle = useMemo(
-    () => [styles.overlay, { backgroundColor: Colors[colorScheme ?? 'light'].background }],
-    [colorScheme]
+    () => [styles.overlay, { backgroundColor: Colors[colorScheme ?? 'light'].background, top: insets.top + 8 }],
+    [colorScheme, insets.top]
   );
 
   const handleRecenter = () => {
@@ -114,7 +116,7 @@ export default function HomeScreen() {
               latitude: currentLocation.coords.latitude,
               longitude: currentLocation.coords.longitude,
             }}
-            title="You"
+            title=" You"
           />
         ) : null}
       </MapView>
