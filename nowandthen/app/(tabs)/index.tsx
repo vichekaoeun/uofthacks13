@@ -374,7 +374,6 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   }, [mode, vignetteOpacity]);
-  }, [mode, vignetteOpacity]);
 
   useEffect(() => {
   // Debounce and prevent overwriting optimistically added comments
