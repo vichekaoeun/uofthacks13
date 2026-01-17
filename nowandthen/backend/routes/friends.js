@@ -3,13 +3,6 @@ const router = express.Router();
 const friendController = require('../controller/friendController');
 const authMiddleware = require('../middleware/auth');
 
-// Public routes
-// GET /api/friends/search - Search users by username
-router.get('/search', friendController.searchUsers);
-
-// GET /api/friends/user/:userId - Get friends list of a user
-router.get('/user/:userId', friendController.getFriends);
-
 // Protected routes (require authentication)
 // POST /api/friends/request - Send friend request
 router.post('/request', authMiddleware, friendController.sendFriendRequest);
@@ -25,5 +18,12 @@ router.get('/requests', authMiddleware, friendController.getFriendRequests);
 
 // POST /api/friends/remove - Remove friend
 router.post('/remove', authMiddleware, friendController.removeFriend);
+
+// Public routes - placed after specific routes to avoid conflicts
+// GET /api/friends/search - Search users by username
+router.get('/search', friendController.searchUsers);
+
+// GET /api/friends/user/:userId - Get friends list of a user
+router.get('/user/:userId', friendController.getFriends);
 
 module.exports = router;

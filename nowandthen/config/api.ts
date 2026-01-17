@@ -8,7 +8,7 @@ const getBaseURL = () => {
   if (__DEV__) {
     // Use your computer's IP address - works for all platforms
     // Change this to your computer's IP if it changes
-    return 'http://100.67.210.151:3005/api';
+    return 'http://100.67.157.88:3005/api';
     
     // Alternative platform-specific URLs (uncomment if needed):
     // if (Platform.OS === 'android') {
