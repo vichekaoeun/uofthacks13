@@ -5,6 +5,9 @@ import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { StatusBar } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -48,6 +51,9 @@ export default function HomeScreen() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [postContent, setPostContent] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+
+
   useEffect(() => {
     let isMounted = true;
 
@@ -95,9 +101,17 @@ export default function HomeScreen() {
   }, []);
 
   const overlayStyle = useMemo(
-    () => [styles.overlay, { backgroundColor: Colors[colorScheme ?? 'light'].background, top: insets.top + 8 }],
-    [colorScheme, insets.top]
-  );
+  () => [
+    styles.overlay,
+    {
+      backgroundColor: Colors[colorScheme ?? 'light'].background,
+      top: 0,                    // behind notifications
+      paddingTop: insets.top + 16 // keeps text below the status bar
+    },
+  ],
+  [colorScheme, insets.top]
+);
+
 
   const handleRecenter = () => {
     if (currentLocation) {
@@ -169,6 +183,7 @@ export default function HomeScreen() {
   if (Platform.OS === 'web') {
     return (
       <ThemedView style={[styles.container, styles.webFallback]}>
+        <StatusBar translucent backgroundColor="transparent" />
         <ThemedText type="title">Map view</ThemedText>
         <ThemedText>
           Map rendering is only available on iOS/Android in this build. Open the app in Expo Go to
@@ -308,17 +323,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   overlay: {
-    position: 'absolute',
-    top: 20,
-    left: 16,
-    right: 16,
-    padding: 16,
-    borderRadius: 16,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 4,
+  position: 'absolute',
+  left: 16,
+  right: 16,
+  padding: 16,
+  borderRadius: 16,
+  gap: 8,
+  shadowColor: '#000',
+  shadowOpacity: 0.15,
+  shadowRadius: 10,
+  elevation: 4,
   },
   headerRow: {
     flexDirection: 'row',
@@ -375,6 +389,12 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalOverlay: {
     flex: 1,
