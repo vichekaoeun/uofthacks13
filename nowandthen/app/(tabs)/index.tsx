@@ -4,6 +4,7 @@ import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 import * as ImagePicker from 'expo-image-picker';
+import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +23,11 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.03,
 };
 
+type MediaAttachment = {
+  uri: string;
+  type: 'photo' | 'video';
+};
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
@@ -33,7 +39,7 @@ export default function HomeScreen() {
   const { user, logout } = useAuth();
   const [showPostModal, setShowPostModal] = useState(false);
   const [postContent, setPostContent] = useState('');
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [mediaAttachment, setMediaAttachment] = useState<MediaAttachment | null>(null);
 
   const handleLogout = () => {
     Alert.alert(
@@ -125,42 +131,73 @@ export default function HomeScreen() {
 
   const handlePost = () => {
     if (postContent.trim()) {
-      console.log('Posting:', postContent, 'Photo:', selectedPhoto);
+      console.log('Posting:', postContent, 'Media:', mediaAttachment);
       // Handle post submission here
       setPostContent('');
-      setSelectedPhoto(null);
+      setMediaAttachment(null);
       setShowPostModal(false);
     }
   };
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
     });
 
     if (!result.canceled) {
-      setSelectedPhoto(result.assets[0].uri);
+      setMediaAttachment({ uri: result.assets[0].uri, type: 'photo' });
     }
   };
 
   const takePhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
     });
 
     if (!result.canceled) {
-      setSelectedPhoto(result.assets[0].uri);
+      setMediaAttachment({ uri: result.assets[0].uri, type: 'photo' });
     }
   };
 
-  const handleAddPhoto = () => {
-    Alert.alert('Add Photo', 'How would you like to add a photo?', [
+  const recordVideo = async () => {
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      videoMaxDuration: 60,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setMediaAttachment({ uri: result.assets[0].uri, type: 'video' });
+    }
+  };
+
+  const pickVideo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setMediaAttachment({ uri: result.assets[0].uri, type: 'video' });
+    }
+  };
+
+  const handleAddMedia = () => {
+    Alert.alert('Add Media', 'Choose how to attach media.', [
+      {
+        text: 'Record Video',
+        onPress: recordVideo,
+      },
+      {
+        text: 'Choose Video',
+        onPress: pickVideo,
+      },
       {
         text: 'Take Photo',
         onPress: takePhoto,
@@ -283,24 +320,34 @@ export default function HomeScreen() {
                   onChangeText={setPostContent}
                 />
 
-                {/* Selected Photo */}
-                {selectedPhoto && (
-                  <View style={styles.photoContainer}>
-                    <Image source={{ uri: selectedPhoto }} style={styles.selectedPhoto} />
+                {/* Selected Media */}
+                {mediaAttachment && (
+                  <View style={styles.mediaContainer}>
+                    {mediaAttachment.type === 'photo' ? (
+                      <Image source={{ uri: mediaAttachment.uri }} style={styles.selectedMedia} />
+                    ) : (
+                      <Video
+                        style={styles.selectedMedia}
+                        source={{ uri: mediaAttachment.uri }}
+                        useNativeControls
+                        resizeMode={ResizeMode.COVER}
+                        isLooping
+                      />
+                    )}
                     <Pressable
-                      style={styles.removePhotoButton}
-                      onPress={() => setSelectedPhoto(null)}
+                      style={styles.removeMediaButton}
+                      onPress={() => setMediaAttachment(null)}
                     >
                       <Ionicons name="close-circle" size={28} color="#fff" />
                     </Pressable>
                   </View>
                 )}
 
-                {/* Photo Upload Button */}
-                <Pressable style={styles.photoButton} onPress={handleAddPhoto}>
+                {/* Media Upload Button */}
+                <Pressable style={styles.mediaButton} onPress={handleAddMedia}>
                   <Ionicons name="image" size={24} color="#007AFF" />
                   <ThemedText type="defaultSemiBold" style={{ color: '#007AFF', marginLeft: 8 }}>
-                    Add Photo
+                    Add Photo or Video
                   </ThemedText>
                 </Pressable>
               </ScrollView>
@@ -426,26 +473,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 20,
   },
-  photoContainer: {
+  mediaContainer: {
     position: 'relative',
     marginHorizontal: 16,
     marginTop: 12,
     borderRadius: 12,
     overflow: 'hidden',
   },
-  selectedPhoto: {
+  selectedMedia: {
     width: '100%',
     height: 200,
     borderRadius: 12,
   },
-  removePhotoButton: {
+  removeMediaButton: {
     position: 'absolute',
     top: 8,
     right: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderRadius: 20,
   },
-  photoButton: {
+  mediaButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
