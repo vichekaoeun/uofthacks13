@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -131,6 +132,11 @@ export default function HomeScreen() {
           </Pressable>
         )}
       </View>
+
+      {/* Plus button in bottom right */}
+      <Pressable style={styles.plusButton} onPress={() => console.log('Plus button pressed')}>
+        <Ionicons name="add" size={32} color="#fff" />
+      </Pressable>
     </ThemedView>
   );
 }
@@ -164,6 +170,22 @@ const styles = StyleSheet.create({
   },
   spinner: {
     alignSelf: 'flex-start',
+  },
+  plusButton: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   webFallback: {
     justifyContent: 'center',
