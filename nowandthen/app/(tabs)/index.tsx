@@ -119,6 +119,8 @@ export default function HomeScreen() {
   const [composeMode, setComposeMode] = useState<'post' | 'comment'>('post');
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [selectedComment, setSelectedComment] = useState<CommentItem | null>(null);
+  const wasInFollowModeRef = useRef(false);
   const lastPostTimeRef = useRef<number>(0);
   const fetchCommentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -251,9 +253,17 @@ export default function HomeScreen() {
     }
   };
 
+  const handleCloseComment = () => {
+    setSelectedComment(null);
+    if (wasInFollowModeRef.current) {
+      handleRecenter();
+    }
+  };
+
   const handleRegionChange = (nextRegion: Region) => {
     if (isAnimatingRef.current) return;
     if (!currentLocation) return;
+    if (selectedComment) return; // Don't exit focus mode while viewing a comment
 
     const zoomedOut = nextRegion.latitudeDelta > FOLLOW_DELTA + 0.00005;
     const distanceMeters = getDistanceMeters(
@@ -470,6 +480,15 @@ export default function HomeScreen() {
         onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation
         showsMyLocationButton>
+        {currentLocation ? (
+          <Marker
+            coordinate={{
+              latitude: currentLocation.coords.latitude,
+              longitude: currentLocation.coords.longitude,
+            }}
+            title="You"
+          />
+        ) : null}
         {comments.map((comment) => {
           const isAnonymous = comment.displayUsername === 'anonymous';
           return (
@@ -481,6 +500,10 @@ export default function HomeScreen() {
               }}
               title={comment.displayUsername || comment.username}
               description={comment.content?.text ?? ''}
+              onPress={() => {
+                wasInFollowModeRef.current = mode === 'follow';
+                setSelectedComment(comment);
+              }}
             >
               <View style={{
                 width: 24,
@@ -518,6 +541,34 @@ export default function HomeScreen() {
           <Rect width={width} height={height} fill="url(#vignette)" />
         </Svg>
       </Animated.View>
+
+      {selectedComment ? (
+        <Pressable
+          style={styles.commentSheetBackdrop}
+          onPress={handleCloseComment}>
+          <View
+            style={[
+              styles.commentSheet,
+              {
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                borderColor: Colors[colorScheme ?? 'light'].text + '20',
+              },
+            ]}>
+            <View style={styles.commentSheetHeader}>
+              <ThemedText type="defaultSemiBold">{selectedComment.username}</ThemedText>
+              <Pressable onPress={handleCloseComment}>
+                <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
+              </Pressable>
+            </View>
+            <ThemedText style={styles.commentSheetText}>
+              {selectedComment.content?.text || '—'}
+            </ThemedText>
+            <ThemedText style={styles.commentSheetMeta}>
+              {new Date(selectedComment.createdAt).toLocaleString()}
+            </ThemedText>
+          </View>
+        </Pressable>
+      ) : null}
 
       <View style={overlayStyle}>
         <View style={styles.headerRow}>
@@ -837,5 +888,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#007AFF',
     borderStyle: 'dashed',
+  },
+  commentSheetBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    padding: 24,
+  },
+  commentSheet: {
+    width: '100%',
+    maxWidth: 360,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  commentSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  commentSheetText: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  commentSheetMeta: {
+    fontSize: 12,
+    opacity: 0.6,
   },
 });
