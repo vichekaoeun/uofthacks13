@@ -16,6 +16,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/contexts/AuthContext';
+import { commentsAPI } from '@/services/api';
 
 const FALLBACK_REGION: Region = {
   latitude: 43.6532,
@@ -81,6 +82,21 @@ type MediaAttachment = {
   type: 'photo' | 'video';
 };
 
+type CommentItem = {
+  _id: string;
+  userId: string;
+  username: string;
+  location: {
+    type: 'Point';
+    coordinates: [number, number];
+  };
+  content: {
+    text: string | null;
+    mediaUrl: string | null;
+  };
+  createdAt: string;
+};
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
@@ -99,6 +115,9 @@ export default function HomeScreen() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [postContent, setPostContent] = useState('');
   const [mediaAttachment, setMediaAttachment] = useState<MediaAttachment | null>(null);
+  const [composeMode, setComposeMode] = useState<'post' | 'comment'>('post');
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -260,14 +279,58 @@ export default function HomeScreen() {
     }).start();
   }, [mode, vignetteOpacity]);
 
-  const handlePost = () => {
-    if (postContent.trim()) {
-      console.log('Posting:', postContent, 'Media:', mediaAttachment);
-      // Handle post submission here
-      setPostContent('');
-      setMediaAttachment(null);
-      setShowPostModal(false);
+  useEffect(() => {
+    const fetchComments = async () => {
+      if (!currentLocation) return;
+      try {
+        const data = await commentsAPI.getNearby(
+          currentLocation.coords.latitude,
+          currentLocation.coords.longitude,
+          500
+        );
+        setComments(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.log('Failed to load comments', error);
+      }
+    };
+
+    void fetchComments();
+  }, [currentLocation]);
+
+  const handlePost = async () => {
+    if (!postContent.trim()) return;
+
+    if (composeMode === 'comment') {
+      if (!user || !currentLocation) {
+        Alert.alert('Login required', 'Please login to send comments.');
+        return;
+      }
+
+      setIsSubmittingComment(true);
+      try {
+        const created = await commentsAPI.create({
+          userId: user._id,
+          username: user.username,
+          lat: currentLocation.coords.latitude,
+          lon: currentLocation.coords.longitude,
+          text: postContent.trim(),
+        });
+        setComments((prev) => [created, ...prev]);
+        setPostContent('');
+        setShowPostModal(false);
+      } catch (error) {
+        Alert.alert('Error', 'Failed to send comment.');
+      } finally {
+        setIsSubmittingComment(false);
+      }
+      return;
     }
+
+    console.log('Posting:', postContent, 'Media:', mediaAttachment);
+    // TODO: send post to MongoDB when media uploads are wired
+    setPostContent('');
+    setMediaAttachment(null);
+    setShowPostModal(false);
   };
 
   const pickImage = async () => {
@@ -377,6 +440,18 @@ export default function HomeScreen() {
             title="You"
           />
         ) : null}
+        {comments.map((comment) => (
+          <Marker
+            key={comment._id}
+            coordinate={{
+              latitude: comment.location.coordinates[1],
+              longitude: comment.location.coordinates[0],
+            }}
+            title={comment.username}
+            description={comment.content?.text ?? ''}
+            pinColor="#7B61FF"
+          />
+        ))}
       </MapView>
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: vignetteOpacity }]}>
@@ -422,7 +497,12 @@ export default function HomeScreen() {
       </View>
 
       {/* Plus button in bottom right */}
-      <Pressable style={styles.plusButton} onPress={() => setShowPostModal(true)}>
+      <Pressable
+        style={styles.plusButton}
+        onPress={() => {
+          setComposeMode('comment');
+          setShowPostModal(true);
+        }}>
         <Ionicons name="add" size={32} color="#fff" />
       </Pressable>
 
@@ -444,16 +524,31 @@ export default function HomeScreen() {
                 <Pressable onPress={() => setShowPostModal(false)}>
                   <Ionicons name="close" size={28} color={Colors[colorScheme ?? 'light'].text} />
                 </Pressable>
-                <ThemedText type="title">Create Post</ThemedText>
-                <Pressable onPress={handlePost} disabled={!postContent.trim()}>
+                <ThemedText type="title">
+                  {composeMode === 'comment' ? 'Add Comment' : 'Create Post'}
+                </ThemedText>
+                <Pressable onPress={handlePost} disabled={!postContent.trim() || isSubmittingComment}>
                   <ThemedText
                     type="defaultSemiBold"
                     style={{
-                      color: postContent.trim() ? '#007AFF' : '#ccc',
+                      color: postContent.trim() && !isSubmittingComment ? '#007AFF' : '#ccc',
                     }}
                   >
-                    Post
+                    {composeMode === 'comment' ? 'Send' : 'Post'}
                   </ThemedText>
+                </Pressable>
+              </View>
+
+              <View style={styles.modeToggle}>
+                <Pressable
+                  style={[styles.modeOption, composeMode === 'comment' && styles.modeOptionActive]}
+                  onPress={() => setComposeMode('comment')}>
+                  <ThemedText type="defaultSemiBold">Comment</ThemedText>
+                </Pressable>
+                <Pressable
+                  style={[styles.modeOption, composeMode === 'post' && styles.modeOptionActive]}
+                  onPress={() => setComposeMode('post')}>
+                  <ThemedText type="defaultSemiBold">Post</ThemedText>
                 </Pressable>
               </View>
 
@@ -471,36 +566,40 @@ export default function HomeScreen() {
                   onChangeText={setPostContent}
                 />
 
-                {/* Selected Media */}
-                {mediaAttachment && (
-                  <View style={styles.mediaContainer}>
-                    {mediaAttachment.type === 'photo' ? (
-                      <Image source={{ uri: mediaAttachment.uri }} style={styles.selectedMedia} />
-                    ) : (
-                      <Video
-                        style={styles.selectedMedia}
-                        source={{ uri: mediaAttachment.uri }}
-                        useNativeControls
-                        resizeMode={ResizeMode.COVER}
-                        isLooping
-                      />
+                {composeMode === 'post' ? (
+                  <>
+                    {/* Selected Media */}
+                    {mediaAttachment && (
+                      <View style={styles.mediaContainer}>
+                        {mediaAttachment.type === 'photo' ? (
+                          <Image source={{ uri: mediaAttachment.uri }} style={styles.selectedMedia} />
+                        ) : (
+                          <Video
+                            style={styles.selectedMedia}
+                            source={{ uri: mediaAttachment.uri }}
+                            useNativeControls
+                            resizeMode={ResizeMode.COVER}
+                            isLooping
+                          />
+                        )}
+                        <Pressable
+                          style={styles.removeMediaButton}
+                          onPress={() => setMediaAttachment(null)}
+                        >
+                          <Ionicons name="close-circle" size={28} color="#fff" />
+                        </Pressable>
+                      </View>
                     )}
-                    <Pressable
-                      style={styles.removeMediaButton}
-                      onPress={() => setMediaAttachment(null)}
-                    >
-                      <Ionicons name="close-circle" size={28} color="#fff" />
-                    </Pressable>
-                  </View>
-                )}
 
-                {/* Media Upload Button */}
-                <Pressable style={styles.mediaButton} onPress={handleAddMedia}>
-                  <Ionicons name="image" size={24} color="#007AFF" />
-                  <ThemedText type="defaultSemiBold" style={{ color: '#007AFF', marginLeft: 8 }}>
-                    Add Photo or Video
-                  </ThemedText>
-                </Pressable>
+                    {/* Media Upload Button */}
+                    <Pressable style={styles.mediaButton} onPress={handleAddMedia}>
+                      <Ionicons name="image" size={24} color="#007AFF" />
+                      <ThemedText type="defaultSemiBold" style={{ color: '#007AFF', marginLeft: 8 }}>
+                        Add Photo or Video
+                      </ThemedText>
+                    </Pressable>
+                  </>
+                ) : null}
               </ScrollView>
             </View>
           </View>
@@ -634,6 +733,22 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  modeToggle: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  modeOption: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  modeOptionActive: {
+    backgroundColor: 'rgba(0, 122, 255, 0.2)',
   },
   textInput: {
     flex: 1,
