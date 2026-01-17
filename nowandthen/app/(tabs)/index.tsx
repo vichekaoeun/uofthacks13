@@ -23,6 +23,55 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.03,
 };
 
+// Simple minimal map style - adjust colors as needed
+const MINIMAL_MAP_STYLE = [
+  {
+    elementType: 'geometry',
+    stylers: [{ color: '#F5F5F1' }], // land
+  },
+  {
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'on' }], // Show icons
+  },
+  {
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#616161' }], // Darker text
+  },
+  {
+    elementType: 'labels.text.stroke',
+    stylers: [{ color: '#f5f5f5' }], // Light stroke
+  },
+  {
+    featureType: 'poi',
+    stylers: [{ visibility: 'on' }], // Hide points of interest
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#F5F5F1' }], // White roads
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels',
+    stylers: [{ visibility: 'on' }], // Hide road labels
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#CDD5E2' }], // water
+  },
+  {
+    featureType: 'water',
+    elementType: 'labels.text',
+    stylers: [{ visibility: 'on' }],
+  },
+  {
+  featureType: 'landscape.man_made',
+  elementType: 'geometry',
+  stylers: [{ color: '#E3E3D4' }], // Building color
+},
+];
+
 type MediaAttachment = {
   uri: string;
   type: 'photo' | 'video';
@@ -141,7 +190,7 @@ export default function HomeScreen() {
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
@@ -154,7 +203,7 @@ export default function HomeScreen() {
 
   const takePhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
@@ -167,7 +216,7 @@ export default function HomeScreen() {
 
   const recordVideo = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       videoMaxDuration: 60,
       quality: 1,
     });
@@ -179,7 +228,7 @@ export default function HomeScreen() {
 
   const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       quality: 1,
     });
 
@@ -234,6 +283,10 @@ export default function HomeScreen() {
         style={styles.map}
         initialRegion={region}
         onRegionChangeComplete={setRegion}
+        {...(Platform.OS === 'android' 
+          ? { customMapStyle: MINIMAL_MAP_STYLE }
+          : { mapType: 'mutedStandard' }
+        )}
         showsUserLocation
         showsMyLocationButton>
         {currentLocation ? (

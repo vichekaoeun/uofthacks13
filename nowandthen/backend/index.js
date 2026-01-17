@@ -4,9 +4,10 @@ require('dotenv').config();
 
 const { connectDB } = require('./database');
 const userRoutes = require('./routes/users');
+const friendRoutes = require('./routes/friends');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3005;
 
 app.use(cors());
 app.use(express.json());
@@ -14,6 +15,10 @@ app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Now and Then API' });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
 app.get('/api/health', (req, res) => {
@@ -29,6 +34,18 @@ app.get('/config', (req, res) => {
 
 // Routes
 app.use('/api/users', userRoutes);
+app.use('/api/friends', friendRoutes);
+
+// 404 logger and handler
+app.use((req, res) => {
+  console.log(`[404] ${req.method} ${req.originalUrl}`);
+  res.status(404).json({ 
+    success: false, 
+    message: 'Route not found',
+    method: req.method,
+    url: req.originalUrl
+  });
+});
 
 connectDB().then(() => {
   app.listen(PORT, () => {

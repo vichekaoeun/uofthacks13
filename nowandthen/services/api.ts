@@ -42,4 +42,42 @@ export const authAPI = {
   },
 };
 
+// Friends API
+export const friendsAPI = {
+  searchUsers: async (query: string) => {
+    const response = await api.get('/friends/search', { params: { query } });
+    return response.data;
+  },
+
+  sendFriendRequest: async (recipientId: string) => {
+    const response = await api.post('/friends/request', { recipientId });
+    return response.data;
+  },
+
+  acceptFriendRequest: async (senderId: string) => {
+    const response = await api.post('/friends/accept', { senderId });
+    return response.data;
+  },
+
+  rejectFriendRequest: async (senderId: string) => {
+    const response = await api.post('/friends/reject', { senderId });
+    return response.data;
+  },
+
+  getFriendRequests: async () => {
+    const response = await api.get('/friends/requests');
+    return response.data;
+  },
+
+  getFriends: async (userId: string) => {
+    const response = await api.get(`/friends/user/${userId}`);
+    return response.data;
+  },
+
+  removeFriend: async (friendId: string) => {
+    const response = await api.post('/friends/remove', { friendId });
+    return response.data;
+  },
+};
+
 export default api;
