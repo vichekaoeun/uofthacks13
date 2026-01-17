@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, View, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Image, ScrollView, Alert, useWindowDimensions } from 'react-native';
-import MapView, { Marker, Region, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Region, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
@@ -129,11 +129,18 @@ export default function HomeScreen() {
   const [composeMode, setComposeMode] = useState<'post' | 'comment'>('post');
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [commentRadius, setCommentRadius] = useState(500);
+
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [isAnimatingPath, setIsAnimatingPath] = useState(false);
+  const [animatedPathProgress, setAnimatedPathProgress] = useState(0);
+
   const [selectedComment, setSelectedComment] = useState<CommentItem | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<PostCluster | null>(null);
   const [clusterSortMode, setClusterSortMode] = useState<ClusterSortMode>('recent');
   const [clusterTitles, setClusterTitles] = useState<Record<string, string>>({});
   const wasInFollowModeRef = useRef(false);
+
   const lastPostTimeRef = useRef<number>(0);
   const fetchCommentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -202,9 +209,12 @@ export default function HomeScreen() {
 
       locationWatchRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Platform.OS === 'ios' ? Location.Accuracy.BestForNavigation : Location.Accuracy.Balanced,
-          timeInterval: Platform.OS === 'ios' ? 500 : 200,
-          distanceInterval: Platform.OS === 'ios' ? 1 : 3,
+          accuracy:
+            Platform.OS === 'ios'
+              ? Location.Accuracy.BestForNavigation
+              : Location.Accuracy.Balanced,
+          timeInterval: Platform.OS === 'ios' ? 500 : 1000,
+          distanceInterval: Platform.OS === 'ios' ? 1 : 10,
           mayShowUserSettingsDialog: true,
         },
         (position) => {
@@ -364,40 +374,163 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
   }, [mode, vignetteOpacity]);
+  }, [mode, vignetteOpacity]);
 
   useEffect(() => {
-    // Debounce and prevent overwriting optimistically added comments
+  // Debounce and prevent overwriting optimistically added comments
+  if (fetchCommentsTimeoutRef.current) {
+    clearTimeout(fetchCommentsTimeoutRef.current);
+  }
+
+  fetchCommentsTimeoutRef.current = setTimeout(async () => {
+    if (!currentLocation) return;
+
+    // Skip fetch if we just posted a comment (within 2 seconds)
+    const timeSinceLastPost = Date.now() - lastPostTimeRef.current;
+    if (timeSinceLastPost < 2000) return;
+
+    try {
+      const data = await commentsAPI.getNearby(
+        currentLocation.coords.latitude,
+        currentLocation.coords.longitude,
+        commentRadius,
+        user?._id
+      );
+      setComments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.log('Failed to load comments', error);
+    }
+  }, 500);
+
+  return () => {
     if (fetchCommentsTimeoutRef.current) {
       clearTimeout(fetchCommentsTimeoutRef.current);
     }
+  };
+}, [currentLocation, user, commentRadius]);
 
-    fetchCommentsTimeoutRef.current = setTimeout(async () => {
-      if (!currentLocation) return;
-      
-      // Skip fetch if we just posted a comment (within 2 seconds)
-      const timeSinceLastPost = Date.now() - lastPostTimeRef.current;
-      if (timeSinceLastPost < 2000) return;
+// Filter and sort comments by user for path animation
+const getUserComments = (userId: string) => {
+  return comments
+    .filter((c) => c.userId === userId)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+};
 
-      try {
-        const data = await commentsAPI.getNearby(
-          currentLocation.coords.latitude,
-          currentLocation.coords.longitude,
-          500,
-          user?._id
-        );
-        setComments(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.log('Failed to load comments', error);
-      }
-    }, 500);
+// Catmull-Rom spline interpolation for smooth, artful curves
+const catmullRomSpline = (
+  p0: { latitude: number; longitude: number },
+  p1: { latitude: number; longitude: number },
+  p2: { latitude: number; longitude: number },
+  p3: { latitude: number; longitude: number },
+  t: number
+) => {
+  const t2 = t * t;
+  const t3 = t2 * t;
 
-    return () => {
-      if (fetchCommentsTimeoutRef.current) {
-        clearTimeout(fetchCommentsTimeoutRef.current);
-      }
-    };
-  }, [currentLocation, user]);
+  const latitude =
+    0.5 *
+    ((2 * p1.latitude) +
+      (-p0.latitude + p2.latitude) * t +
+      (2 * p0.latitude - 5 * p1.latitude + 4 * p2.latitude - p3.latitude) * t2 +
+      (-p0.latitude + 3 * p1.latitude - 3 * p2.latitude + p3.latitude) * t3);
 
+  const longitude =
+    0.5 *
+    ((2 * p1.longitude) +
+      (-p0.longitude + p2.longitude) * t +
+      (2 * p0.longitude - 5 * p1.longitude + 4 * p2.longitude - p3.longitude) * t2 +
+      (-p0.longitude + 3 * p1.longitude - 3 * p2.longitude + p3.longitude) * t3);
+
+  return { latitude, longitude };
+};
+
+// Create smooth, artful curved path from all user comments
+const getInterpolatedPath = (userComments: CommentItem[]) => {
+  if (userComments.length < 2) return [];
+
+  const points = userComments.map((c) => ({
+    latitude: c.location.coordinates[1],
+    longitude: c.location.coordinates[0],
+  }));
+
+  const interpolatedPath: { latitude: number; longitude: number }[] = [];
+  const numPointsPerSegment = 30;
+
+  interpolatedPath.push(points[0]);
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+
+    for (let j = 1; j <= numPointsPerSegment; j++) {
+      const t = j / numPointsPerSegment;
+      interpolatedPath.push(catmullRomSpline(p0, p1, p2, p3, t));
+    }
+  }
+
+  return interpolatedPath;
+};
+
+// Handle marker press to start path animation
+const handleMarkerPress = (comment: CommentItem) => {
+  if (comment.displayUsername === 'anonymous') return;
+
+  const userComments = getUserComments(comment.userId);
+  if (userComments.length <= 1) return;
+
+  setSelectedUserId(comment.userId);
+  setAnimatedPathProgress(0);
+  setIsAnimatingPath(true);
+
+  fitPathToView(userComments);
+  animatePathLine(userComments.length);
+};
+
+// Fit all path comments in the map view
+const fitPathToView = (userComments: CommentItem[]) => {
+  const coordinates = userComments.map((c) => ({
+    latitude: c.location.coordinates[1],
+    longitude: c.location.coordinates[0],
+  }));
+
+  if (coordinates.length === 0) return;
+
+  setMode('discover');
+  isAnimatingRef.current = true;
+
+  mapRef.current?.fitToCoordinates(coordinates, {
+    edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
+    animated: true,
+  });
+
+  setTimeout(() => {
+    isAnimatingRef.current = false;
+  }, 1000);
+};
+
+// Animate the dotted line drawing progressively
+const animatePathLine = (_totalComments: number) => {
+  const duration = 4000;
+  const steps = 120;
+  const stepDuration = duration / steps;
+  let currentStep = 0;
+
+  const intervalId = setInterval(() => {
+    currentStep++;
+    setAnimatedPathProgress(currentStep / steps);
+
+    if (currentStep >= steps) {
+      clearInterval(intervalId);
+      setTimeout(() => {
+        setIsAnimatingPath(false);
+        setSelectedUserId(null);
+        setAnimatedPathProgress(0);
+      }, 10000);
+    }
+  }, stepDuration);
+}; 
   const handlePost = async () => {
     if (!postContent.trim()) return;
 
@@ -561,9 +694,35 @@ export default function HomeScreen() {
             title="You"
           />
         ) : null}
+        {/* Path Polyline - connects comments in chronological order (only when zoomed in) */}
+        {isAnimatingPath && selectedUserId && (mode === 'follow' || !zoomedOutForClusters) && (() => {
+          const userComments = getUserComments(selectedUserId);
+          const fullPath = getInterpolatedPath(userComments);
+          const numPointsToShow = Math.floor(animatedPathProgress * fullPath.length);
+          const coordinatesToShow = fullPath.slice(0, Math.max(2, numPointsToShow));
+
+          return coordinatesToShow.length > 1 ? (
+            <Polyline
+              coordinates={coordinatesToShow}
+              strokeColor="#7B61FF"
+              strokeWidth={5}
+              lineDashPattern={[0.1, 12]}
+              lineCap="round"
+              lineJoin="round"
+            />
+          ) : null;
+        })()}
+        
         {mode === 'follow' || !zoomedOutForClusters
           ? comments.map((comment) => {
               const isAnonymous = comment.displayUsername === 'anonymous';
+              const isSelectedUser = selectedUserId === comment.userId;
+              const userComments = isSelectedUser ? getUserComments(comment.userId) : [];
+              const commentIndex = isSelectedUser ? userComments.findIndex(c => c._id === comment._id) : -1;
+              const progressThreshold = commentIndex / Math.max(1, userComments.length - 1);
+              const isRevealed = isSelectedUser && isAnimatingPath && animatedPathProgress >= progressThreshold;
+              const isInPath = isSelectedUser && isAnimatingPath;
+              
               return (
                 <Marker
                   key={comment._id}
@@ -574,26 +733,39 @@ export default function HomeScreen() {
                   title={comment.displayUsername || comment.username}
                   description={comment.content?.text ?? ''}
                   onPress={() => {
+                    // Try path animation first (only for non-anonymous users with >1 comment)
+                    if (comment.displayUsername !== 'anonymous') {
+                      const userComments = getUserComments(comment.userId);
+                      if (userComments.length > 1) {
+                        handleMarkerPress(comment);
+                        return;
+                      }
+                    }
+
+                    // Otherwise open the comment sheet
                     wasInFollowModeRef.current = mode === 'follow';
                     setSelectedCluster(null);
                     setSelectedComment(comment);
-                  }}
+                  }}  
                 >
-                  <View
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
+                  <View style={[
+                    styles.markerPin,
+                    { 
                       backgroundColor: isAnonymous ? '#808080' : '#2d8941',
-                      borderWidth: 2,
-                      borderColor: 'white',
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: 0.25,
-                      shadowRadius: 3.84,
-                      elevation: 5,
-                    }}
-                  />
+                      width: isInPath ? 28 : 24,
+                      height: isInPath ? 28 : 24,
+                      borderRadius: isInPath ? 14 : 12,
+                      borderWidth: isInPath ? 3 : 2,
+                      borderColor: isInPath ? (isRevealed ? '#7B61FF' : '#FFA500') : 'white',
+                      opacity: isInPath ? (isRevealed ? 1 : 0.4) : 1,
+                    }
+                  ]}>
+                    {isInPath && (
+                      <View style={styles.pathNumberContainer}>
+                        <ThemedText style={styles.pathNumber}>{commentIndex + 1}</ThemedText>
+                      </View>
+                    )}
+                  </View>
                 </Marker>
               );
             })
@@ -739,6 +911,39 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
         </View>
+        
+        {/* Radius Control */}
+        <View style={styles.radiusControl}>
+          <ThemedText style={styles.radiusLabel}>Comment Range: {commentRadius}m</ThemedText>
+          <View style={styles.radiusButtons}>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 25 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(25)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 25 && styles.radiusButtonTextActive]}>25m</ThemedText>
+            </Pressable>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 50 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(50)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 50 && styles.radiusButtonTextActive]}>50m</ThemedText>
+            </Pressable>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 100 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(100)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 100 && styles.radiusButtonTextActive]}>100m</ThemedText>
+            </Pressable>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 500 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(500)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 500 && styles.radiusButtonTextActive]}>500m</ThemedText>
+            </Pressable>
+            <Pressable 
+              style={[styles.radiusButton, commentRadius === 1000 && styles.radiusButtonActive]}
+              onPress={() => setCommentRadius(1000)}>
+              <ThemedText style={[styles.radiusButtonText, commentRadius === 1000 && styles.radiusButtonTextActive]}>1km</ThemedText>
+            </Pressable>
+          </View>
+        </View>
+        
         {errorMessage ? <ThemedText>{errorMessage}</ThemedText> : null}
         {loading ? (
           <ActivityIndicator style={styles.spinner} />
@@ -935,6 +1140,55 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
+  markerPin: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pathNumberContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pathNumber: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  pathAnimationStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: 'rgba(123, 97, 255, 0.15)',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#7B61FF',
+    gap: 12,
+  },
+  pathProgress: {
+    fontSize: 12,
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  stopButton: {
+    backgroundColor: '#FF3B30',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  stopButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
   vignetteSvg: {
     position: 'absolute',
     top: 0,
@@ -961,6 +1215,12 @@ const styles = StyleSheet.create({
   userInfo: {
     fontSize: 12,
     marginTop: 4,
+  },
+  instructionText: {
+    fontSize: 11,
+    marginTop: 4,
+    opacity: 0.6,
+    fontStyle: 'italic',
   },
   logoutBtn: {
     backgroundColor: '#FF3B30',
@@ -1035,6 +1295,41 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  radiusControl: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  radiusLabel: {
+    fontSize: 12,
+    marginBottom: 6,
+    opacity: 0.7,
+    fontWeight: '500',
+  },
+  radiusButtons: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  radiusButton: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  radiusButtonActive: {
+    backgroundColor: '#7B61FF',
+    borderColor: '#7B61FF',
+  },
+  radiusButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  radiusButtonTextActive: {
+    color: '#fff',
   },
   modeToggle: {
     flexDirection: 'row',
