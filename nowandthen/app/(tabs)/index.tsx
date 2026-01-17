@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Image, ScrollView, Alert } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, View, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Image, ScrollView, Alert, useWindowDimensions } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,14 +23,24 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.03,
 };
 
+type MapMode = 'discover' | 'follow';
+const FOLLOW_DELTA = 0.001;
+const PAN_AWAY_METERS = 60;
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
   const mapRef = useRef<MapView | null>(null);
   const [region, setRegion] = useState<Region>(FALLBACK_REGION);
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<MapMode>('follow');
+  const previousDeltaRef = useRef(region.latitudeDelta);
+  const isAnimatingRef = useRef(false);
+  const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
+  const vignetteOpacity = useRef(new Animated.Value(1)).current;
   const { user, logout } = useAuth();
   const [showPostModal, setShowPostModal] = useState(false);
   const [postContent, setPostContent] = useState('');
@@ -76,10 +87,11 @@ export default function HomeScreen() {
         const nextRegion: Region = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
+          latitudeDelta: FOLLOW_DELTA,
+          longitudeDelta: FOLLOW_DELTA,
         };
         setRegion(nextRegion);
+        previousDeltaRef.current = nextRegion.latitudeDelta;
       } catch (error) {
         if (isMounted) {
           setErrorMessage('Unable to fetch location. Showing default map view.');
@@ -93,10 +105,44 @@ export default function HomeScreen() {
 
     void loadLocation();
 
+    const startWatching = async () => {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+
+      locationWatchRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 200,
+          distanceInterval: 3,
+        },
+        (position) => {
+          setCurrentLocation(position);
+          if (mode === 'follow') {
+            const nextRegion: Region = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              latitudeDelta: FOLLOW_DELTA,
+              longitudeDelta: FOLLOW_DELTA,
+            };
+            isAnimatingRef.current = true;
+            setRegion(nextRegion);
+            mapRef.current?.animateToRegion(nextRegion, 450);
+            setTimeout(() => {
+              isAnimatingRef.current = false;
+            }, 500);
+          }
+        }
+      );
+    };
+
+    void startWatching();
+
     return () => {
       isMounted = false;
+      locationWatchRef.current?.remove();
+      locationWatchRef.current = null;
     };
-  }, []);
+  }, [mode]);
 
   const overlayStyle = useMemo(
     () => [
@@ -115,13 +161,50 @@ export default function HomeScreen() {
       const nextRegion: Region = {
         latitude: currentLocation.coords.latitude,
         longitude: currentLocation.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+        latitudeDelta: FOLLOW_DELTA,
+        longitudeDelta: FOLLOW_DELTA,
       };
+      setMode('follow');
+      isAnimatingRef.current = true;
       setRegion(nextRegion);
       mapRef.current?.animateToRegion(nextRegion, 450);
+      setTimeout(() => {
+        isAnimatingRef.current = false;
+      }, 500);
     }
   };
+
+  const handleRegionChange = (nextRegion: Region) => {
+    if (isAnimatingRef.current) return;
+    if (!currentLocation) return;
+
+    const zoomedOut = nextRegion.latitudeDelta > FOLLOW_DELTA + 0.00005;
+    const distanceMeters = getDistanceMeters(
+      currentLocation.coords.latitude,
+      currentLocation.coords.longitude,
+      nextRegion.latitude,
+      nextRegion.longitude
+    );
+    const pannedAway = distanceMeters > PAN_AWAY_METERS;
+
+    if (mode === 'follow' && (zoomedOut || pannedAway)) {
+      setMode('discover');
+    }
+  };
+
+  const handleRegionChangeComplete = (nextRegion: Region) => {
+    setRegion(nextRegion);
+    previousDeltaRef.current = nextRegion.latitudeDelta;
+  };
+
+  useEffect(() => {
+    Animated.timing(vignetteOpacity, {
+      toValue: mode === 'follow' ? 1 : 0,
+      duration: 500,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [mode, vignetteOpacity]);
 
   const handlePost = () => {
     if (postContent.trim()) {
@@ -196,7 +279,8 @@ export default function HomeScreen() {
         ref={mapRef}
         style={styles.map}
         initialRegion={region}
-        onRegionChangeComplete={setRegion}
+        onRegionChange={handleRegionChange}
+        onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation
         showsMyLocationButton>
         {currentLocation ? (
@@ -209,6 +293,25 @@ export default function HomeScreen() {
           />
         ) : null}
       </MapView>
+
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: vignetteOpacity }]}>
+        <Svg width={width} height={height} style={styles.vignetteSvg}>
+          <Defs>
+            <RadialGradient
+              id="vignette"
+              cx={width / 2}
+              cy={height / 2}
+              r={Math.min(width, height) / 2}
+              gradientUnits="userSpaceOnUse">
+              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0} />
+              <Stop offset="65%" stopColor="#FFFFFF" stopOpacity={0} />
+              <Stop offset="85%" stopColor="#FFFFFF" stopOpacity={0.35} />
+              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0.65} />
+            </RadialGradient>
+          </Defs>
+          <Rect width={width} height={height} fill="url(#vignette)" />
+        </Svg>
+      </Animated.View>
 
       <View style={overlayStyle}>
         <View style={styles.headerRow}>
@@ -312,12 +415,34 @@ export default function HomeScreen() {
   );
 }
 
+const getDistanceMeters = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+) => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
   map: {
     flex: 1,
+  },
+  vignetteSvg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   overlay: {
     position: 'absolute',
