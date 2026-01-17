@@ -190,7 +190,7 @@ export default function HomeScreen() {
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
@@ -203,7 +203,7 @@ export default function HomeScreen() {
 
   const takePhoto = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
@@ -216,7 +216,7 @@ export default function HomeScreen() {
 
   const recordVideo = async () => {
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       videoMaxDuration: 60,
       quality: 1,
     });
@@ -228,7 +228,7 @@ export default function HomeScreen() {
 
   const pickVideo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       quality: 1,
     });
 
