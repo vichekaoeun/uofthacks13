@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { router } from 'expo-router';
@@ -43,8 +44,13 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Login to continue</Text>
+        <Image
+          source={require('../assets/images/login-icon.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={styles.title}>NowAndThen</Text>
+        <Text style={styles.subtitle}>Begin your journey</Text>
 
         <View style={styles.form}>
           <TextInput
@@ -82,9 +88,9 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <View style={styles.registerContainer}>
-            <Text style={styles.registerText}>Don't have an account? </Text>
+            <Text style={styles.registerText}>Don&apos;t have an account?</Text>
             <TouchableOpacity onPress={() => router.push('/register')} disabled={isLoading}>
-              <Text style={styles.registerLink}>Register</Text>
+              <Text style={styles.registerLink}> Register</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -96,23 +102,33 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F5F5F1',
   },
   content: {
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  logo: {
+    width: 130,
+    height: 155,
+    marginBottom: 44,
+    alignSelf: 'center',
+  },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#000',
+    fontFamily: 'radley-italic',
+    fontSize: 36,
+    fontWeight: '700',
+    marginBottom: 4,
+    color: '#474C48',
+    textAlign: 'center',
+    
   },
   subtitle: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 32,
+    marginBottom: 24,
+    textAlign: 'center',
   },
   form: {
     width: '100%',
@@ -121,7 +137,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 8,
+    borderRadius: 16,
     paddingHorizontal: 16,
     marginBottom: 16,
     fontSize: 16,
@@ -129,8 +145,8 @@ const styles = StyleSheet.create({
   },
   button: {
     height: 50,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: '#8BAF8A',
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
@@ -153,7 +169,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   registerLink: {
-    color: '#007AFF',
+    color: '#729171ff',
     fontSize: 14,
     fontWeight: '600',
   },

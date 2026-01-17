@@ -69,7 +69,7 @@ export default function RegisterScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <Text style={styles.title}>Create Account</Text>
+          <Text style={styles.title} numberOfLines={1}>Create Account</Text>
           <Text style={styles.subtitle}>Sign up to get started</Text>
 
           <View style={styles.form}>
@@ -144,7 +144,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F5F5F1',
   },
   scrollContent: {
     flexGrow: 1,
@@ -156,15 +156,18 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 36,
+    fontFamily: 'radley-italic',
+    fontWeight: '700',
     marginBottom: 8,
-    color: '#000',
+    color: '#474C48',
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 32,
+    marginBottom: 20,
+    textAlign: 'center',
   },
   form: {
     width: '100%',
@@ -173,7 +176,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 8,
+    borderRadius: 16,
     paddingHorizontal: 16,
     marginBottom: 16,
     fontSize: 16,
@@ -181,8 +184,8 @@ const styles = StyleSheet.create({
   },
   button: {
     height: 50,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: '#8BAF8A',
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
@@ -205,7 +208,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   loginLink: {
-    color: '#007AFF',
+    color: '#729171ff',
     fontSize: 14,
     fontWeight: '600',
   },
