@@ -95,7 +95,17 @@ type CommentItem = {
     text: string | null;
     mediaUrl: string | null;
   };
+  likes?: number;
   createdAt: string;
+};
+
+type ClusterSortMode = 'recent' | 'likes';
+
+type PostCluster = {
+  id: string;
+  center: { latitude: number; longitude: number };
+  median: { latitude: number; longitude: number };
+  items: CommentItem[];
 };
 
 export default function HomeScreen() {
@@ -126,6 +136,9 @@ export default function HomeScreen() {
   const [animatedPathProgress, setAnimatedPathProgress] = useState(0);
 
   const [selectedComment, setSelectedComment] = useState<CommentItem | null>(null);
+  const [selectedCluster, setSelectedCluster] = useState<PostCluster | null>(null);
+  const [clusterSortMode, setClusterSortMode] = useState<ClusterSortMode>('recent');
+  const [clusterTitles, setClusterTitles] = useState<Record<string, string>>({});
   const wasInFollowModeRef = useRef(false);
 
   const lastPostTimeRef = useRef<number>(0);
@@ -270,6 +283,10 @@ export default function HomeScreen() {
     }
   };
 
+  const handleCloseCluster = () => {
+    setSelectedCluster(null);
+  };
+
   const handleRegionChange = (nextRegion: Region) => {
     if (isAnimatingRef.current) return;
     if (!currentLocation) return;
@@ -295,8 +312,68 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-    // Vignette animation disabled for performance
-    vignetteOpacity.setValue(0);
+    if (mode === 'follow') {
+      setSelectedCluster(null);
+    }
+  }, [mode]);
+
+  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 6, [region.latitudeDelta]);
+
+  const clusters = useMemo(() => {
+    if (mode === 'follow' || !zoomedOutForClusters) return [] as PostCluster[];
+    return buildClusters(comments, region);
+  }, [comments, mode, region, zoomedOutForClusters]);
+
+  const sortedClusterItems = useMemo(() => {
+    if (!selectedCluster) return [] as CommentItem[];
+    const items = [...selectedCluster.items];
+    if (clusterSortMode === 'likes') {
+      return items.sort((a, b) => {
+        const likeDiff = (b.likes ?? 0) - (a.likes ?? 0);
+        if (likeDiff !== 0) return likeDiff;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    }
+    return items.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [selectedCluster, clusterSortMode]);
+
+  const resolveClusterTitle = async (cluster: PostCluster) => {
+    if (clusterTitles[cluster.id]) return;
+    try {
+      const results = await Location.reverseGeocodeAsync({
+        latitude: cluster.median.latitude,
+        longitude: cluster.median.longitude,
+      });
+      const first = results[0];
+      const title =
+        first?.name ||
+        first?.street ||
+        first?.district ||
+        first?.city ||
+        first?.region ||
+        'Nearby posts';
+      setClusterTitles((prev) => (prev[cluster.id] ? prev : { ...prev, [cluster.id]: title }));
+    } catch (error) {
+      setClusterTitles((prev) => (prev[cluster.id] ? prev : { ...prev, [cluster.id]: 'Nearby posts' }));
+    }
+  };
+
+  const handleSelectCluster = (cluster: PostCluster) => {
+    setSelectedComment(null);
+    setSelectedCluster(cluster);
+    void resolveClusterTitle(cluster);
+  };
+
+  useEffect(() => {
+    Animated.timing(vignetteOpacity, {
+      toValue: mode === 'follow' ? 1 : 0,
+      duration: 500,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [mode, vignetteOpacity]);
   }, [mode, vignetteOpacity]);
 
   useEffect(() => {
@@ -617,9 +694,8 @@ const animatePathLine = (_totalComments: number) => {
             title="You"
           />
         ) : null}
-        
-        {/* Path Polyline - connects comments in chronological order */}
-        {isAnimatingPath && selectedUserId && (() => {
+        {/* Path Polyline - connects comments in chronological order (only when zoomed in) */}
+        {isAnimatingPath && selectedUserId && (mode === 'follow' || !zoomedOutForClusters) && (() => {
           const userComments = getUserComments(selectedUserId);
           const fullPath = getInterpolatedPath(userComments);
           const numPointsToShow = Math.floor(animatedPathProgress * fullPath.length);
@@ -637,61 +713,72 @@ const animatePathLine = (_totalComments: number) => {
           ) : null;
         })()}
         
-        {comments.map((comment, idx) => {
-          const isAnonymous = comment.displayUsername === 'anonymous';
-          const isSelectedUser = selectedUserId === comment.userId;
-          const userComments = isSelectedUser ? getUserComments(comment.userId) : [];
-          const commentIndex = isSelectedUser ? userComments.findIndex(c => c._id === comment._id) : -1;
-          const progressThreshold = commentIndex / Math.max(1, userComments.length - 1);
-          const isRevealed = isSelectedUser && isAnimatingPath && animatedPathProgress >= progressThreshold;
-          const isInPath = isSelectedUser && isAnimatingPath;
-          
-          return (
-            <Marker
-              key={comment._id}
-              coordinate={{
-                latitude: comment.location.coordinates[1],
-                longitude: comment.location.coordinates[0],
-              }}
-              title={comment.displayUsername || comment.username}
-              description={comment.content?.text ?? ''}
-              onPress={() => {
-                // Try path animation first (only for non-anonymous users with >1 comment)
-                if (comment.displayUsername !== 'anonymous') {
-                  const userComments = getUserComments(comment.userId);
-                  if (userComments.length > 1) {
-                    handleMarkerPress(comment);
-                    return;
-                  }
-                }
+        {mode === 'follow' || !zoomedOutForClusters
+          ? comments.map((comment) => {
+              const isAnonymous = comment.displayUsername === 'anonymous';
+              const isSelectedUser = selectedUserId === comment.userId;
+              const userComments = isSelectedUser ? getUserComments(comment.userId) : [];
+              const commentIndex = isSelectedUser ? userComments.findIndex(c => c._id === comment._id) : -1;
+              const progressThreshold = commentIndex / Math.max(1, userComments.length - 1);
+              const isRevealed = isSelectedUser && isAnimatingPath && animatedPathProgress >= progressThreshold;
+              const isInPath = isSelectedUser && isAnimatingPath;
+              
+              return (
+                <Marker
+                  key={comment._id}
+                  coordinate={{
+                    latitude: comment.location.coordinates[1],
+                    longitude: comment.location.coordinates[0],
+                  }}
+                  title={comment.displayUsername || comment.username}
+                  description={comment.content?.text ?? ''}
+                  onPress={() => {
+                    // Try path animation first (only for non-anonymous users with >1 comment)
+                    if (comment.displayUsername !== 'anonymous') {
+                      const userComments = getUserComments(comment.userId);
+                      if (userComments.length > 1) {
+                        handleMarkerPress(comment);
+                        return;
+                      }
+                    }
 
-                // Otherwise open the comment sheet
-                wasInFollowModeRef.current = mode === 'follow';
-                setSelectedComment(comment);
-              }}  
-
-            >
-              <View style={[
-                styles.markerPin,
-                { 
-                  backgroundColor: isAnonymous ? '#808080' : '#2d8941',
-                  width: isInPath ? 28 : 24,
-                  height: isInPath ? 28 : 24,
-                  borderRadius: isInPath ? 14 : 12,
-                  borderWidth: isInPath ? 3 : 2,
-                  borderColor: isInPath ? (isRevealed ? '#7B61FF' : '#FFA500') : 'white',
-                  opacity: isInPath ? (isRevealed ? 1 : 0.4) : 1,
-                }
-              ]}>
-                {isInPath && (
-                  <View style={styles.pathNumberContainer}>
-                    <ThemedText style={styles.pathNumber}>{commentIndex + 1}</ThemedText>
+                    // Otherwise open the comment sheet
+                    wasInFollowModeRef.current = mode === 'follow';
+                    setSelectedCluster(null);
+                    setSelectedComment(comment);
+                  }}  
+                >
+                  <View style={[
+                    styles.markerPin,
+                    { 
+                      backgroundColor: isAnonymous ? '#808080' : '#2d8941',
+                      width: isInPath ? 28 : 24,
+                      height: isInPath ? 28 : 24,
+                      borderRadius: isInPath ? 14 : 12,
+                      borderWidth: isInPath ? 3 : 2,
+                      borderColor: isInPath ? (isRevealed ? '#7B61FF' : '#FFA500') : 'white',
+                      opacity: isInPath ? (isRevealed ? 1 : 0.4) : 1,
+                    }
+                  ]}>
+                    {isInPath && (
+                      <View style={styles.pathNumberContainer}>
+                        <ThemedText style={styles.pathNumber}>{commentIndex + 1}</ThemedText>
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
-            </Marker>
-          );
-        })}
+                </Marker>
+              );
+            })
+          : clusters.map((cluster) => (
+              <Marker
+                key={cluster.id}
+                coordinate={cluster.center}
+                onPress={() => handleSelectCluster(cluster)}>
+                <View style={styles.clusterMarker}>
+                  <ThemedText style={styles.clusterMarkerText}>{cluster.items.length}</ThemedText>
+                </View>
+              </Marker>
+            ))}
       </MapView>
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: vignetteOpacity }]}>
@@ -737,6 +824,76 @@ const animatePathLine = (_totalComments: number) => {
             <ThemedText style={styles.commentSheetMeta}>
               {new Date(selectedComment.createdAt).toLocaleString()}
             </ThemedText>
+          </View>
+        </Pressable>
+      ) : null}
+
+      {selectedCluster ? (
+        <Pressable style={styles.commentSheetBackdrop} onPress={handleCloseCluster}>
+          <View
+            style={[
+              styles.clusterSheet,
+              {
+                backgroundColor: Colors[colorScheme ?? 'light'].background,
+                borderColor: Colors[colorScheme ?? 'light'].text + '20',
+              },
+            ]}>
+            <View style={styles.commentSheetHeader}>
+              <View style={styles.clusterHeaderText}>
+                <ThemedText type="defaultSemiBold">
+                  {clusterTitles[selectedCluster.id] || 'Loading location…'}
+                </ThemedText>
+                <ThemedText style={styles.clusterCountText}>
+                  {selectedCluster.items.length} posts
+                </ThemedText>
+              </View>
+              <Pressable onPress={handleCloseCluster}>
+                <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
+              </Pressable>
+            </View>
+
+            <View style={styles.clusterSortRow}>
+              <Pressable
+                style={[
+                  styles.clusterSortOption,
+                  clusterSortMode === 'recent' && styles.clusterSortOptionActive,
+                ]}
+                onPress={() => setClusterSortMode('recent')}>
+                <ThemedText type="defaultSemiBold">Newest</ThemedText>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.clusterSortOption,
+                  clusterSortMode === 'likes' && styles.clusterSortOptionActive,
+                ]}
+                onPress={() => setClusterSortMode('likes')}>
+                <ThemedText type="defaultSemiBold">Top</ThemedText>
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.clusterList}>
+              {sortedClusterItems.map((item) => (
+                <View key={item._id} style={styles.clusterItem}>
+                  <ThemedText type="defaultSemiBold">
+                    {item.displayUsername || item.username}
+                  </ThemedText>
+                  <ThemedText style={styles.clusterItemText}>
+                    {item.content?.text || '—'}
+                  </ThemedText>
+                  <View style={styles.clusterItemMetaRow}>
+                    <ThemedText style={styles.clusterItemMeta}>
+                      {new Date(item.createdAt).toLocaleString()}
+                    </ThemedText>
+                    <View style={styles.clusterLikeBadge}>
+                      <Ionicons name="heart" size={12} color="#FF3B30" />
+                      <ThemedText style={styles.clusterLikeText}>
+                        {item.likes ?? 0}
+                      </ThemedText>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         </Pressable>
       ) : null}
@@ -925,6 +1082,55 @@ const getDistanceMeters = (
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+};
+
+const getMedian = (values: number[]) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+};
+
+const buildClusters = (items: CommentItem[], region: Region): PostCluster[] => {
+  if (items.length === 0) return [];
+  const latGrid = Math.max(0.0015, region.latitudeDelta / 8);
+  const lonGrid = Math.max(0.0015, region.longitudeDelta / 8);
+
+  const buckets = new Map<string, CommentItem[]>();
+  items.forEach((item) => {
+    const lat = item.location.coordinates[1];
+    const lon = item.location.coordinates[0];
+    const latKey = Math.floor(lat / latGrid);
+    const lonKey = Math.floor(lon / lonGrid);
+    const key = `${latKey}:${lonKey}`;
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.push(item);
+    } else {
+      buckets.set(key, [item]);
+    }
+  });
+
+  return Array.from(buckets.entries()).map(([key, bucketItems]) => {
+    const latitudes = bucketItems.map((item) => item.location.coordinates[1]);
+    const longitudes = bucketItems.map((item) => item.location.coordinates[0]);
+    const center = {
+      latitude: latitudes.reduce((sum, value) => sum + value, 0) / latitudes.length,
+      longitude: longitudes.reduce((sum, value) => sum + value, 0) / longitudes.length,
+    };
+    const median = {
+      latitude: getMedian(latitudes),
+      longitude: getMedian(longitudes),
+    };
+    return {
+      id: key,
+      center,
+      median,
+      items: bucketItems,
+    };
+  });
 };
 
 const styles = StyleSheet.create({
@@ -1218,5 +1424,89 @@ const styles = StyleSheet.create({
   commentSheetMeta: {
     fontSize: 12,
     opacity: 0.6,
+  },
+  clusterSheet: {
+    width: '100%',
+    maxWidth: 420,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  clusterHeaderText: {
+    flex: 1,
+  },
+  clusterCountText: {
+    fontSize: 12,
+    opacity: 0.6,
+    marginTop: 2,
+  },
+  clusterSortRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  clusterSortOption: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  clusterSortOptionActive: {
+    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+  },
+  clusterList: {
+    maxHeight: 360,
+  },
+  clusterItem: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+  clusterItemText: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  clusterItemMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  clusterItemMeta: {
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  clusterLikeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  clusterLikeText: {
+    fontSize: 12,
+  },
+  clusterMarker: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1E88E5',
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  clusterMarkerText: {
+    color: '#fff',
+    fontSize: 12,
   },
 });
