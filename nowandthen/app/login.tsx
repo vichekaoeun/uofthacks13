@@ -118,7 +118,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'radley-italic',
     fontSize: 36,
-    fontWeight: '700',
     marginBottom: 4,
     color: '#474C48',
     textAlign: 'center',

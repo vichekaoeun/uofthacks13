@@ -4,19 +4,19 @@ import MapView, { Marker, Region, Polyline, PROVIDER_GOOGLE } from 'react-native
 import * as Location from 'expo-location';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+
 import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/contexts/AuthContext';
 import { commentsAPI } from '@/services/api';
+
 
 const FALLBACK_REGION: Region = {
   latitude: 43.6532,
@@ -28,6 +28,7 @@ const FALLBACK_REGION: Region = {
 type MapMode = 'discover' | 'follow';
 const FOLLOW_DELTA = 0.001;
 const PAN_AWAY_METERS = 60;
+
 // Simple minimal map style - adjust colors as needed
 const MINIMAL_MAP_STYLE = [
   {
@@ -123,7 +124,7 @@ export default function HomeScreen() {
   const isAnimatingRef = useRef(false);
   const locationWatchRef = useRef<Location.LocationSubscription | null>(null);
   const vignetteOpacity = useRef(new Animated.Value(1)).current;
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [showPostModal, setShowPostModal] = useState(false);
   const [postContent, setPostContent] = useState('');
   const [mediaAttachment, setMediaAttachment] = useState<MediaAttachment | null>(null);
@@ -145,22 +146,7 @@ export default function HomeScreen() {
   const lastPostTimeRef = useRef<number>(0);
   const fetchCommentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-          }
-        },
-      ]
-    );
-  };
+
 
   useEffect(() => {
     let isMounted = true;
@@ -251,9 +237,9 @@ export default function HomeScreen() {
     () => [
       styles.overlay,
       {
-        backgroundColor: Colors[colorScheme ?? 'light'].background,
+        backgroundColor: 'rgba(255, 255, 255, 0.72)',
         top: 0,
-        paddingTop: insets.top + 16
+        paddingTop: insets.top + 10
       },
     ],
     [colorScheme, insets.top]
@@ -759,6 +745,7 @@ const animatePathLine = (_totalComments: number) => {
                   }}
                   title={comment.displayUsername || comment.username}
                   description={comment.content?.text ?? ''}
+                  
                   onPress={() => {
                     // Try path animation first (only for non-anonymous users with >1 comment)
                     if (comment.displayUsername !== 'anonymous') {
@@ -775,24 +762,17 @@ const animatePathLine = (_totalComments: number) => {
                     setSelectedComment(comment);
                   }}  
                 >
-                  <View style={[
-                    styles.markerPin,
-                    { 
-                      backgroundColor: isAnonymous ? '#808080' : '#2d8941',
-                      width: isInPath ? 28 : 24,
-                      height: isInPath ? 28 : 24,
-                      borderRadius: isInPath ? 14 : 12,
-                      borderWidth: isInPath ? 3 : 2,
-                      borderColor: isInPath ? (isRevealed ? '#7B61FF' : '#FFA500') : 'white',
-                      opacity: isInPath ? (isRevealed ? 1 : 0.4) : 1,
-                    }
-                  ]}>
-                    {isInPath && (
-                      <View style={styles.pathNumberContainer}>
-                        <ThemedText style={styles.pathNumber}>{commentIndex + 1}</ThemedText>
-                      </View>
-                    )}
-                  </View>
+                <Image
+                  source={isAnonymous 
+                    ? require('@/assets/images/add-comment.png')
+                    : require('@/assets/images/add-comment-friend.png')
+                  }
+                  style={{
+                    width: 40,
+                    height: 30,
+                    resizeMode: 'contain',
+                  }}
+                />
                 </Marker>
               );
             })
@@ -947,16 +927,13 @@ const animatePathLine = (_totalComments: number) => {
 
       <View style={overlayStyle}>
         <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <ThemedText type="title">HereAndNow</ThemedText>
-            <ThemedText>Nearby memories are displayed on the map.</ThemedText>
-            {user && <ThemedText style={styles.userInfo}>Logged in as: {user.username}</ThemedText>}
+            <ThemedText type="title" style={styles.homeTitle}>NowAndThen</ThemedText>
           </View>
-          {user && (
+          {/* {user && (
             <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
               <ThemedText style={styles.logoutText}>Logout</ThemedText>
             </TouchableOpacity>
-          )}
+          )} */}
         </View>
         
         {/* Radius Control */}
@@ -995,12 +972,10 @@ const animatePathLine = (_totalComments: number) => {
         {loading ? (
           <ActivityIndicator style={styles.spinner} />
         ) : (
-          <Pressable style={styles.button} onPress={handleRecenter}>
-            <ThemedText type="defaultSemiBold">Recenter</ThemedText>
+          <Pressable style={styles.recenterButton} onPress={handleRecenter}>
+            <ThemedText type="defaultSemiBold" style={{ color: '#525b51ff' }}>Re-center</ThemedText>
           </Pressable>
         )}
-      </View>
-
       {/* Plus button in bottom right */}
       <Pressable
         style={styles.plusButton}
@@ -1243,10 +1218,10 @@ const styles = StyleSheet.create({
   },
   overlay: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 0,
+    right: 0,
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 1,
     gap: 8,
     shadowColor: '#000',
     shadowOpacity: 0.15,
@@ -1259,6 +1234,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 8,
+    paddingLeft: 8,
+  },
+  homeTitle: {
+    fontFamily: 'radley-italic',
+    fontSize: 28,
+    color: '#000000',
   },
   userInfo: {
     fontSize: 12,
@@ -1270,17 +1251,17 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     fontStyle: 'italic',
   },
-  logoutBtn: {
-    backgroundColor: '#FF3B30',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  logoutText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 12,
-  },
+  // logoutBtn: {
+  //   backgroundColor: '#FF3B30',
+  //   paddingHorizontal: 12,
+  //   paddingVertical: 8,
+  //   borderRadius: 6,
+  // },
+  // logoutText: {
+  //   color: '#fff',
+  //   fontWeight: '600',
+  //   fontSize: 12,
+  // },
   button: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
@@ -1288,17 +1269,33 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: 'rgba(0,0,0,0.08)',
   },
+  recenterButton: {
+    position: 'absolute',
+    bottom: 98,
+    left: 6,
+    width: 100,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: '#e2ebe1ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
   spinner: {
     alignSelf: 'flex-start',
   },
   plusButton: {
     position: 'absolute',
-    bottom: 24,
-    right: 24,
+    bottom: 96,
+    right: 6,
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#73aa6eff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -1369,8 +1366,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   radiusButtonActive: {
-    backgroundColor: '#7B61FF',
-    borderColor: '#7B61FF',
+    backgroundColor: '#e0bd40ff',
+    borderColor: '#d3b64bff',
   },
   radiusButtonText: {
     fontSize: 11,
