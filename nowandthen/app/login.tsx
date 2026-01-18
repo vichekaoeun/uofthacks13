@@ -50,7 +50,7 @@ export default function LoginScreen() {
           resizeMode="contain"
         />
         <Text style={styles.title}>NowAndThen</Text>
-        <Text style={styles.subtitle}>Begin your journey</Text>
+        <Text style={styles.subtitle}>Where places become stories</Text>
 
         <View style={styles.form}>
           <TextInput
@@ -110,15 +110,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   logo: {
-    width: 130,
-    height: 155,
-    marginBottom: 44,
+    width: 140,
+    height: 160,
+    marginBottom: 32,
     alignSelf: 'center',
   },
   title: {
     fontFamily: 'radley-italic',
     fontSize: 36,
-    marginBottom: 4,
+    marginBottom: 6,
     color: '#474C48',
     textAlign: 'center',
     
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 24,
+    marginBottom: 36,
     textAlign: 'center',
   },
   form: {
