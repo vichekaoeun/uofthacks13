@@ -799,6 +799,7 @@ const animatePathLine = (_totalComments: number) => {
         onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation
         showsMyLocationButton>
+        {/* Path Polyline - connects comments in chronological order (only when zoomed in) */}
         {isAnimatingPath && selectedUserId && (mode === 'follow' || !zoomedOutForClusters) && (() => {
           const userComments = getUserComments(selectedUserId);
           const fullPath = getInterpolatedPath(userComments);
@@ -836,6 +837,8 @@ const animatePathLine = (_totalComments: number) => {
                   }}
                   title={comment.displayUsername || comment.username}
                   description={comment.content?.text ?? ''}
+                  anchor={{ x: 0.5, y: 1 }}
+                  centerOffset={{ x: 0, y: 0 }}
                   
                   onPress={() => {
                     // Start path animation if available, but always open the comment sheet
@@ -851,17 +854,15 @@ const animatePathLine = (_totalComments: number) => {
                     setSelectedComment(comment);
                   }}  
                 >
-                <Image
-                  source={isAnonymous 
-                    ? require('@/assets/images/add-comment.png')
-                    : require('@/assets/images/add-comment-friend.png')
-                  }
-                  style={{
-                    width: 40,
-                    height: 30,
-                    resizeMode: 'contain',
-                  }}
-                />
+                <View style={styles.markerWrapper}>
+                  <Image
+                    source={isAnonymous 
+                      ? require('@/assets/images/add-comment.png')
+                      : require('@/assets/images/add-comment-friend.png')
+                    }
+                    style={styles.markerImage}
+                  />
+                </View>
                 </Marker>
               );
             })
@@ -1135,7 +1136,7 @@ const animatePathLine = (_totalComments: number) => {
                   <Ionicons name="close" size={28} color={Colors[colorScheme ?? 'light'].text} />
                 </Pressable>
                 <ThemedText type="title">
-                  {composeMode === 'comment' ? 'Add Comment' : 'Create Post'}
+                  Add Comment
                 </ThemedText>
                 <Pressable
                   onPress={handlePost}
@@ -1147,7 +1148,7 @@ const animatePathLine = (_totalComments: number) => {
                       color: postContent.trim() && !isSubmittingComment ? '#007AFF' : '#ccc',
                     }}
                   >
-                    {composeMode === 'comment' ? 'Send' : 'Post'}
+                    Send
                   </ThemedText>
                 </Pressable>
               </View>
@@ -1174,16 +1175,15 @@ const animatePathLine = (_totalComments: number) => {
                     styles.textInput,
                     { color: Colors[colorScheme ?? 'light'].text },
                   ]}
-                  placeholder={composeMode === 'comment' ? 'Add a note or caption...' : 'What makes this place yours?'}
+                  placeholder='What’s this place’s story?'
                   placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
                   multiline
                   value={postContent}
                   onChangeText={setPostContent}
                 />
 
-                {composeMode === 'comment' || composeMode === 'post' ? (
-                  <>
-                    {/* Selected Media */}
+                <>
+                  {/* Selected Media */}
                     {mediaAttachment && (
                       <View style={styles.mediaContainer}>
                         {mediaAttachment.type === 'photo' ? (
@@ -1215,7 +1215,6 @@ const animatePathLine = (_totalComments: number) => {
                       </ThemedText>
                     </Pressable>
                   </>
-                ) : null}
               </ScrollView>
             </View>
           </View>
@@ -1322,6 +1321,17 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  markerWrapper: {
+    width: Platform.OS === 'android' ? 33 : 48,
+    height: Platform.OS === 'android' ? 31 : 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
   },
   pathAnimationStatus: {
     flexDirection: 'row',
@@ -1581,7 +1591,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    padding: 24,
+    //padding: Platform.OS === 'android' ? 12 : 24,
     zIndex: 20,
     elevation: 20,
   },
