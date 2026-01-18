@@ -1,28 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
 const commentController = require('../controller/commentController');
 const authMiddleware = require('../middleware/auth');
-
-const uploadsDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-	fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-	destination: (_req, _file, cb) => {
-		cb(null, uploadsDir);
-	},
-	filename: (_req, file, cb) => {
-		const timestamp = Date.now();
-		const safeName = file.originalname.replace(/\s+/g, '-');
-		cb(null, `${timestamp}-${safeName}`);
-	},
-});
-
-const upload = multer({ storage });
+const upload = multer({ storage: multer.memoryStorage() });
 
 // GET /api/comments?lat=43.6532&lon=-79.3832&radius=500
 router.get('/', commentController.getComments);
@@ -35,5 +16,8 @@ router.post('/:commentId/like', authMiddleware, commentController.toggleLike);
 
 // POST /api/comments/upload
 router.post('/upload', upload.single('file'), commentController.uploadMedia);
+
+// GET /api/comments/media/:id
+router.get('/media/:id', commentController.getMedia);
 
 module.exports = router;
