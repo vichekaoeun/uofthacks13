@@ -412,7 +412,8 @@ export default function HomeScreen() {
     }
   }, [mode]);
 
-  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 1.2, [region.latitudeDelta]);
+  // Require a larger zoom-out before clustering kicks in to avoid small nearby groups
+  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 4.0, [region.latitudeDelta]);
 
   const clusters = useMemo(() => {
     if (mode === 'follow' || !zoomedOutForClusters) return [] as PostCluster[];
@@ -1345,13 +1346,33 @@ const animatePathLine = (_totalComments: number) => {
                       </View>
                     )}
 
-                    {/* Media Upload Button */}
-                    <Pressable style={styles.mediaButton} onPress={handleAddMedia} hitSlop={buttonHitSlop}>
-                      <Ionicons name="image" size={24} color="#007AFF" />
-                      <ThemedText type="defaultSemiBold" style={{ color: '#007AFF', marginLeft: 8 }}>
-                        Add Photo or Video
-                      </ThemedText>
-                    </Pressable>
+                    {/* Media Upload Buttons */}
+                    <View style={styles.mediaButtonGroup}>
+                      <Pressable style={styles.mediaButton} onPress={takePhoto} hitSlop={buttonHitSlop}>
+                        <Ionicons name="camera" size={22} color="#007AFF" />
+                        <ThemedText type="defaultSemiBold" style={styles.mediaButtonText}>
+                          Take Photo
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable style={styles.mediaButton} onPress={pickImage} hitSlop={buttonHitSlop}>
+                        <Ionicons name="images" size={22} color="#007AFF" />
+                        <ThemedText type="defaultSemiBold" style={styles.mediaButtonText}>
+                          Upload Photo
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable style={styles.mediaButton} onPress={recordVideo} hitSlop={buttonHitSlop}>
+                        <Ionicons name="videocam" size={22} color="#007AFF" />
+                        <ThemedText type="defaultSemiBold" style={styles.mediaButtonText}>
+                          Take Video
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable style={styles.mediaButton} onPress={pickVideo} hitSlop={buttonHitSlop}>
+                        <Ionicons name="cloud-upload" size={22} color="#007AFF" />
+                        <ThemedText type="defaultSemiBold" style={styles.mediaButtonText}>
+                          Upload Video
+                        </ThemedText>
+                      </Pressable>
+                    </View>
                   </>
               </ScrollView>
             </View>
@@ -1719,6 +1740,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#007AFF',
     borderStyle: 'dashed',
+  },
+  mediaButtonGroup: {
+    marginTop: 4,
+  },
+  mediaButtonText: {
+    color: '#007AFF',
+    marginLeft: 8,
   },
   commentSheetBackdrop: {
     position: 'absolute',
