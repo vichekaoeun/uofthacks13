@@ -8,7 +8,7 @@ const getBaseURL = () => {
   if (__DEV__) {
     // ⚠️ IMPORTANT: Update API_HOST in backend/.env instead of this file.
     // This value is used as fallback; at runtime, AuthContext fetches from /config endpoint.
-    return 'http://100.67.157.88:3005/api';
+    return 'http://100.67.210.151:3005/api';
     
     // Alternative platform-specific URLs (uncomment if needed):
     // if (Platform.OS === 'android') {
