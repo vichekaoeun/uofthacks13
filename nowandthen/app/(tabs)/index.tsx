@@ -15,7 +15,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/contexts/AuthContext';
-import { commentsAPI } from '@/services/api';
+import { aiAPI, commentsAPI } from '@/services/api';
 
 
 const FALLBACK_REGION: Region = {
@@ -104,6 +104,13 @@ type CommentItem = {
 
 type ClusterSortMode = 'recent' | 'likes';
 
+type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+};
+
 type PostCluster = {
   id: string;
   center: { latitude: number; longitude: number };
@@ -143,6 +150,10 @@ export default function HomeScreen() {
   const [selectedCluster, setSelectedCluster] = useState<PostCluster | null>(null);
   const [clusterSortMode, setClusterSortMode] = useState<ClusterSortMode>('recent');
   const [clusterTitles, setClusterTitles] = useState<Record<string, string>>({});
+  const [clusterTab, setClusterTab] = useState<'posts' | 'identity'>('posts');
+  const [clusterChats, setClusterChats] = useState<Record<string, ChatMessage[]>>({});
+  const [identityInput, setIdentityInput] = useState('');
+  const [identityLoading, setIdentityLoading] = useState(false);
   const wasInFollowModeRef = useRef(false);
 
   const lastPostTimeRef = useRef<number>(0);
@@ -447,7 +458,70 @@ export default function HomeScreen() {
   const handleSelectCluster = (cluster: PostCluster) => {
     setSelectedComment(null);
     setSelectedCluster(cluster);
+    setClusterTab('posts');
     void resolveClusterTitle(cluster);
+  };
+
+  const getClusterChat = (clusterId: string) => clusterChats[clusterId] || [];
+
+  const handleIdentitySend = async () => {
+    if (!selectedCluster) return;
+    const trimmed = identityInput.trim();
+    if (!trimmed || identityLoading) return;
+
+    const clusterId = selectedCluster.id;
+    const userMessage: ChatMessage = {
+      id: `${Date.now()}-user`,
+      role: 'user',
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+    };
+
+    const nextMessages = [...getClusterChat(clusterId), userMessage];
+    setClusterChats((prev) => ({ ...prev, [clusterId]: nextMessages }));
+    setIdentityInput('');
+    setIdentityLoading(true);
+
+    try {
+      const locationTitle = clusterTitles[clusterId] || 'This place';
+      const posts = selectedCluster.items.map((item) => ({
+        id: item._id,
+        username: item.displayUsername || item.username,
+        text: item.content?.text || '',
+        createdAt: item.createdAt,
+      }));
+
+      const response = await aiAPI.identityChat({
+        locationTitle,
+        posts,
+        messages: nextMessages.map((msg) => ({ role: msg.role, content: msg.content })),
+      });
+
+      const assistantMessage: ChatMessage = {
+        id: `${Date.now()}-assistant`,
+        role: 'assistant',
+        content: response?.reply || 'I am quiet right now. Try again soon.',
+        createdAt: new Date().toISOString(),
+      };
+
+      setClusterChats((prev) => ({
+        ...prev,
+        [clusterId]: [...nextMessages, assistantMessage],
+      }));
+    } catch (_err) {
+      const assistantMessage: ChatMessage = {
+        id: `${Date.now()}-assistant-error`,
+        role: 'assistant',
+        content: 'I had trouble answering just now. Try again in a moment.',
+        createdAt: new Date().toISOString(),
+      };
+      setClusterChats((prev) => ({
+        ...prev,
+        [clusterId]: [...nextMessages, assistantMessage],
+      }));
+    } finally {
+      setIdentityLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -994,57 +1068,121 @@ const animatePathLine = (_totalComments: number) => {
               </Pressable>
             </View>
 
-            <View style={styles.clusterSortRow}>
+            <View style={styles.clusterTabRow}>
               <Pressable
                 style={[
-                  styles.clusterSortOption,
-                  clusterSortMode === 'recent' && styles.clusterSortOptionActive,
+                  styles.clusterTabOption,
+                  clusterTab === 'posts' && styles.clusterTabOptionActive,
                 ]}
-                onPress={() => setClusterSortMode('recent')}
+                onPress={() => setClusterTab('posts')}
                 hitSlop={buttonHitSlop}>
-                <ThemedText type="defaultSemiBold">Newest</ThemedText>
+                <ThemedText type="defaultSemiBold">Posts</ThemedText>
               </Pressable>
               <Pressable
                 style={[
-                  styles.clusterSortOption,
-                  clusterSortMode === 'likes' && styles.clusterSortOptionActive,
+                  styles.clusterTabOption,
+                  clusterTab === 'identity' && styles.clusterTabOptionActive,
                 ]}
-                onPress={() => setClusterSortMode('likes')}
+                onPress={() => setClusterTab('identity')}
                 hitSlop={buttonHitSlop}>
-                <ThemedText type="defaultSemiBold">Top</ThemedText>
+                <ThemedText type="defaultSemiBold">Identity</ThemedText>
               </Pressable>
             </View>
 
-            <ScrollView style={styles.clusterList} nestedScrollEnabled>
-              {sortedClusterItems.map((item) => (
-                <View key={item._id} style={styles.clusterItem}>
-                  <ThemedText type="defaultSemiBold">
-                    {item.displayUsername || item.username}
-                  </ThemedText>
-                  <ThemedText style={styles.clusterItemText}>
-                    {item.content?.text || '—'}
-                  </ThemedText>
-                  <View style={styles.clusterItemMetaRow}>
-                    <ThemedText style={styles.clusterItemMeta}>
-                      {new Date(item.createdAt).toLocaleString()}
-                    </ThemedText>
-                    <Pressable
-                      style={styles.clusterLikeBadge}
-                      onPress={() => void handleLike(item._id)}
-                      hitSlop={buttonHitSlop}>
-                      <Ionicons
-                        name={item.likedByMe ? 'heart' : 'heart-outline'}
-                        size={12}
-                        color="#FF3B30"
-                      />
-                      <ThemedText style={styles.clusterLikeText}>
-                        {item.likes ?? 0}
-                      </ThemedText>
-                    </Pressable>
-                  </View>
+            {clusterTab === 'posts' ? (
+              <>
+                <View style={styles.clusterSortRow}>
+                  <Pressable
+                    style={[
+                      styles.clusterSortOption,
+                      clusterSortMode === 'recent' && styles.clusterSortOptionActive,
+                    ]}
+                    onPress={() => setClusterSortMode('recent')}
+                    hitSlop={buttonHitSlop}>
+                    <ThemedText type="defaultSemiBold">Newest</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.clusterSortOption,
+                      clusterSortMode === 'likes' && styles.clusterSortOptionActive,
+                    ]}
+                    onPress={() => setClusterSortMode('likes')}
+                    hitSlop={buttonHitSlop}>
+                    <ThemedText type="defaultSemiBold">Top</ThemedText>
+                  </Pressable>
                 </View>
-              ))}
-            </ScrollView>
+
+                <ScrollView style={styles.clusterList} nestedScrollEnabled>
+                  {sortedClusterItems.map((item) => (
+                    <View key={item._id} style={styles.clusterItem}>
+                      <ThemedText type="defaultSemiBold">
+                        {item.displayUsername || item.username}
+                      </ThemedText>
+                      <ThemedText style={styles.clusterItemText}>
+                        {item.content?.text || '—'}
+                      </ThemedText>
+                      <View style={styles.clusterItemMetaRow}>
+                        <ThemedText style={styles.clusterItemMeta}>
+                          {new Date(item.createdAt).toLocaleString()}
+                        </ThemedText>
+                        <Pressable
+                          style={styles.clusterLikeBadge}
+                          onPress={() => void handleLike(item._id)}
+                          hitSlop={buttonHitSlop}>
+                          <Ionicons
+                            name={item.likedByMe ? 'heart' : 'heart-outline'}
+                            size={12}
+                            color="#FF3B30"
+                          />
+                          <ThemedText style={styles.clusterLikeText}>
+                            {item.likes ?? 0}
+                          </ThemedText>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              </>
+            ) : (
+              <View style={styles.identityContainer}>
+                <ScrollView style={styles.identityList} contentContainerStyle={styles.identityListContent}>
+                  {(clusterChats[selectedCluster.id] || []).length === 0 ? (
+                    <ThemedText style={styles.identityEmptyText}>
+                      Ask this place about its memories, identity, or what it is known for.
+                    </ThemedText>
+                  ) : (
+                    (clusterChats[selectedCluster.id] || []).map((msg) => (
+                      <View
+                        key={msg.id}
+                        style={[
+                          styles.identityBubble,
+                          msg.role === 'user' ? styles.identityBubbleUser : styles.identityBubbleAssistant,
+                        ]}>
+                        <ThemedText style={styles.identityBubbleText}>{msg.content}</ThemedText>
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+                <View style={styles.identityInputRow}>
+                  <TextInput
+                    style={[styles.identityInput, { color: Colors[colorScheme ?? 'light'].text }]}
+                    placeholder="Ask this place..."
+                    placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
+                    value={identityInput}
+                    onChangeText={setIdentityInput}
+                    multiline
+                  />
+                  <Pressable
+                    style={styles.identitySendButton}
+                    onPress={handleIdentitySend}
+                    hitSlop={buttonHitSlop}>
+                    <ThemedText style={styles.identitySendText}>
+                      {identityLoading ? '...' : 'Send'}
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              </View>
+            )}
             </View>
           </View>
         </View>
@@ -1680,6 +1818,22 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginTop: 2,
   },
+  clusterTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  clusterTabOption: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  clusterTabOptionActive: {
+    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+  },
   clusterSortRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1729,6 +1883,61 @@ const styles = StyleSheet.create({
   },
   clusterLikeText: {
     fontSize: 12,
+  },
+  identityContainer: {
+    maxHeight: 360,
+  },
+  identityList: {
+    flexGrow: 0,
+  },
+  identityListContent: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  identityEmptyText: {
+    fontSize: 13,
+    opacity: 0.7,
+    lineHeight: 18,
+  },
+  identityBubble: {
+    padding: 10,
+    borderRadius: 12,
+  },
+  identityBubbleUser: {
+    alignSelf: 'flex-end',
+    backgroundColor: 'rgba(0, 122, 255, 0.18)',
+  },
+  identityBubbleAssistant: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  identityBubbleText: {
+    fontSize: 13,
+  },
+  identityInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  identityInput: {
+    flex: 1,
+    minHeight: 36,
+    maxHeight: 90,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+  },
+  identitySendButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+  },
+  identitySendText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   clusterMarker: {
     minWidth: 32,
