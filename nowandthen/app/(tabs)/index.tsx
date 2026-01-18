@@ -724,7 +724,8 @@ const animatePathLine = (_totalComments: number) => {
                 backgroundColor: Colors[colorScheme ?? 'light'].background,
                 borderColor: Colors[colorScheme ?? 'light'].text + '20',
               },
-            ]}>
+            ]}
+            onStartShouldSetResponder={() => true}>
             <View style={styles.commentSheetHeader}>
               <ThemedText type="defaultSemiBold">{selectedComment.username}</ThemedText>
               <Pressable onPress={handleCloseComment}>
