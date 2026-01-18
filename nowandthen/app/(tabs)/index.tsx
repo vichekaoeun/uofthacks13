@@ -996,7 +996,7 @@ const animatePathLine = (_totalComments: number) => {
                   <Ionicons name="close" size={28} color={Colors[colorScheme ?? 'light'].text} />
                 </Pressable>
                 <ThemedText type="title">
-                  {composeMode === 'comment' ? 'Add Comment' : 'Create Post'}
+                  Add Comment
                 </ThemedText>
                 <Pressable onPress={handlePost} disabled={!postContent.trim() || isSubmittingComment}>
                   <ThemedText
@@ -1005,21 +1005,8 @@ const animatePathLine = (_totalComments: number) => {
                       color: postContent.trim() && !isSubmittingComment ? '#007AFF' : '#ccc',
                     }}
                   >
-                    {composeMode === 'comment' ? 'Send' : 'Post'}
+                    Send
                   </ThemedText>
-                </Pressable>
-              </View>
-
-              <View style={styles.modeToggle}>
-                <Pressable
-                  style={[styles.modeOption, composeMode === 'comment' && styles.modeOptionActive]}
-                  onPress={() => setComposeMode('comment')}>
-                  <ThemedText type="defaultSemiBold">Comment</ThemedText>
-                </Pressable>
-                <Pressable
-                  style={[styles.modeOption, composeMode === 'post' && styles.modeOptionActive]}
-                  onPress={() => setComposeMode('post')}>
-                  <ThemedText type="defaultSemiBold">Post</ThemedText>
                 </Pressable>
               </View>
 
@@ -1030,16 +1017,15 @@ const animatePathLine = (_totalComments: number) => {
                     styles.textInput,
                     { color: Colors[colorScheme ?? 'light'].text },
                   ]}
-                  placeholder={composeMode === 'comment' ? 'Add a note or caption...' : 'What makes this place yours?'}
+                  placeholder='What’s this place’s story?'
                   placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
                   multiline
                   value={postContent}
                   onChangeText={setPostContent}
                 />
 
-                {composeMode === 'comment' || composeMode === 'post' ? (
-                  <>
-                    {/* Selected Media */}
+                <>
+                  {/* Selected Media */}
                     {mediaAttachment && (
                       <View style={styles.mediaContainer}>
                         {mediaAttachment.type === 'photo' ? (
@@ -1070,7 +1056,6 @@ const animatePathLine = (_totalComments: number) => {
                       </ThemedText>
                     </Pressable>
                   </>
-                ) : null}
               </ScrollView>
             </View>
           </View>
