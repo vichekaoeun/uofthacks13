@@ -821,9 +821,9 @@ const animatePathLine = (_totalComments: number) => {
             ]}
             onStartShouldSetResponder={() => true}>
             <View style={styles.commentSheetHeader}>
-              <ThemedText type="defaultSemiBold">{selectedComment.username}</ThemedText>
+              <ThemedText type="defaultSemiBold">{selectedComment.displayUsername || selectedComment.username}</ThemedText>
               <Pressable onPress={handleCloseComment}>
-                <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
+                <Ionicons name="close" size={r20} color={Colors[colorScheme ?? 'light'].text} />
               </Pressable>
             </View>
             <ThemedText style={styles.commentSheetText}>
