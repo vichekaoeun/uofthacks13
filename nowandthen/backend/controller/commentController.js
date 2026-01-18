@@ -24,6 +24,9 @@ exports.getComments = async (req, res) => {
     };
     
     if (userId) {
+      if (!ObjectId.isValid(userId)) {
+        return res.status(400).json({ error: 'Invalid userId' });
+      }
       query.userId = new ObjectId(userId);
     }
     
@@ -36,11 +39,11 @@ exports.getComments = async (req, res) => {
     let effectiveRequestingUserId = requestingUserId;
     if (!effectiveRequestingUserId) {
       const authHeader = req.header('Authorization');
-      if (authHeader?.startsWith('Bearer ')) {
+      if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.replace('Bearer ', '');
         try {
           const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          if (decoded?.userId) {
+          if (decoded && decoded.userId) {
             effectiveRequestingUserId = decoded.userId;
           }
         } catch (_err) {
@@ -52,6 +55,9 @@ exports.getComments = async (req, res) => {
     // Get the requesting user's friend list if provided
     let friendIds = [];
     if (effectiveRequestingUserId) {
+      if (!ObjectId.isValid(effectiveRequestingUserId)) {
+        return res.status(400).json({ error: 'Invalid requestingUserId' });
+      }
       const requestingUser = await db.collection('users').findOne(
         { _id: new ObjectId(effectiveRequestingUserId) },
         { projection: { friends: 1 } }
@@ -61,7 +67,7 @@ exports.getComments = async (req, res) => {
         friendIds = requestingUser.friends.map(id => id.toString());
       }
     }
-    
+
     // Process comments to show names only for friends
     const processedComments = comments.map(comment => {
       const commentUserIdStr = comment.userId.toString();

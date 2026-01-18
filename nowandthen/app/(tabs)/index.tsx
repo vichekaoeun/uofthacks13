@@ -146,6 +146,7 @@ export default function HomeScreen() {
   const wasInFollowModeRef = useRef(false);
 
   const lastPostTimeRef = useRef<number>(0);
+  const lastLikeActionRef = useRef<number>(0);
   const fetchCommentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
@@ -281,6 +282,7 @@ export default function HomeScreen() {
       Alert.alert('Login required', 'Please log in to like posts.');
       return;
     }
+    lastLikeActionRef.current = Date.now();
     const findExisting = (items: CommentItem[]) => items.find((c) => c._id === commentId);
 
     const existing =
@@ -470,6 +472,10 @@ export default function HomeScreen() {
     const timeSinceLastPost = Date.now() - lastPostTimeRef.current;
     if (timeSinceLastPost < 2000) return;
 
+    // Skip fetch if we just liked/unliked a comment (within 2 seconds)
+    const timeSinceLastLike = Date.now() - lastLikeActionRef.current;
+    if (timeSinceLastLike < 2000) return;
+
     try {
       const data = await commentsAPI.getNearby(
         currentLocation.coords.latitude,
@@ -481,7 +487,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.log('Failed to load comments', error);
     }
-  }, 500);
+  }, 1500);
 
   return () => {
     if (fetchCommentsTimeoutRef.current) {
