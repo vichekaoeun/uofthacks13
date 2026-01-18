@@ -1153,7 +1153,7 @@ const animatePathLine = (_totalComments: number) => {
                 </Pressable>
               </View>
 
-              <View style={styles.modeToggle}>
+              {/* <View style={styles.modeToggle}>
                 <Pressable
                   style={[styles.modeOption, composeMode === 'comment' && styles.modeOptionActive]}
                   onPress={() => setComposeMode('comment')}
@@ -1166,7 +1166,7 @@ const animatePathLine = (_totalComments: number) => {
                   hitSlop={buttonHitSlop}>
                   <ThemedText type="defaultSemiBold">Post</ThemedText>
                 </Pressable>
-              </View>
+              </View> */}
 
               <ScrollView style={styles.scrollContent}>
                 {/* Input */}
