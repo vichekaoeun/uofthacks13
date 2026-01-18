@@ -932,7 +932,7 @@ const animatePathLine = (_totalComments: number) => {
                   <Image
                     source={isAnonymous 
                       ? require('@/assets/images/add-comment.png')
-                      : require('@/assets/images/add-comment-friend.png')
+                      : require('@/assets/images/add-comment-friend2.png')
                     }
                     style={styles.markerImage}
                   />
