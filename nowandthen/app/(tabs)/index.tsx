@@ -1112,7 +1112,7 @@ const animatePathLine = (_totalComments: number) => {
                   </Pressable>
                 </View>
 
-                <ScrollView style={styles.clusterList} nestedScrollEnabled>
+                <ScrollView style={styles.clusterList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                   {sortedClusterItems.map((item) => (
                     <View key={item._id} style={styles.clusterItem}>
                       <ThemedText type="defaultSemiBold">
@@ -1241,7 +1241,7 @@ const animatePathLine = (_totalComments: number) => {
           <ActivityIndicator style={styles.spinner} />
         ) : (
           <Pressable style={styles.recenterButton} onPress={handleRecenter} hitSlop={buttonHitSlop}>
-            <ThemedText type="defaultSemiBold" style={{ color: '#525b51ff' }}>Re-center</ThemedText>
+            <ThemedText type="defaultSemiBold" style={{ color: '#3e433dff' }}>Re-center</ThemedText>
           </Pressable>
         )}
       {/* Plus button in bottom right */}
@@ -1525,7 +1525,7 @@ const styles = StyleSheet.create({
   homeTitle: {
     fontFamily: 'radley-italic',
     fontSize: 28,
-    color: '#000000',
+    color: '#263228ff',
   },
   userInfo: {
     fontSize: 12,
@@ -1557,12 +1557,12 @@ const styles = StyleSheet.create({
   },
   recenterButton: {
     position: 'absolute',
-    bottom: 98,
+    bottom: Platform.OS === 'android' ? 92 : 98,
     left: 6,
-    width: 100,
+    width: 106,
     height: 48,
     borderRadius: 10,
-    backgroundColor: '#e2ebe1ff',
+    backgroundColor: '#e6efe5ff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -1576,12 +1576,12 @@ const styles = StyleSheet.create({
   },
   plusButton: {
     position: 'absolute',
-    bottom: 96,
+    bottom: Platform.OS === 'android' ? 94 : 96,
     right: 6,
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#73aa6eff',
+    backgroundColor: '#6ca67bff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -1653,7 +1653,7 @@ const styles = StyleSheet.create({
   },
   radiusButtonActive: {
     backgroundColor: '#e0bd40ff',
-    borderColor: '#d3b64bff',
+    borderColor: '#dac269ff',
   },
   radiusButtonText: {
     fontSize: 11,
@@ -1722,9 +1722,9 @@ const styles = StyleSheet.create({
   },
   commentSheetBackdrop: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    top: -40,
+    left: -40,
+    right: -40,
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',

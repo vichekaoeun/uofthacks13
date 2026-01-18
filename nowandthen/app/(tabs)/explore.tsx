@@ -340,7 +340,7 @@ export default function FriendsScreen() {
             />
           )}
           {!friendsLoading && friends.length === 0 && (
-            <ThemedText style={styles.emptyText}>You haven't added any friends yet</ThemedText>
+            <ThemedText style={styles.emptyText}>You haven&apos;t added any friends yet</ThemedText>
           )}
         </View>
       )}
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
   },
   removeFriendBtn: {
-    backgroundColor: '#f44336',
+    backgroundColor: '#b35953ff',
   },
   smallButton: {
     paddingHorizontal: 10,
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
   },
   rejectBtn: {
-    backgroundColor: '#f44336',
+    backgroundColor: '#b35953ff',
   },
   buttonGroup: {
     flexDirection: 'row',

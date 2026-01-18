@@ -18,12 +18,12 @@ export default function SettingsScreen() {
 
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      'Log out',
+      'Are you sure you want to log out?',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Logout', 
+          text: 'Log out', 
           style: 'destructive',
           onPress: async () => {
             await logout();
@@ -81,14 +81,14 @@ export default function SettingsScreen() {
                 style={[styles.logoutBtn, { backgroundColor: isDark ? '#4a3a3a' : '#ffe6e6' }]} 
                 onPress={handleLogout}
               >
-                <Ionicons name="log-out-outline" size={20} color="#FF3B30" />
+                <Ionicons name="log-out-outline" size={20} color="#b35953ff" />
                 <ThemedText style={styles.logoutText}>Logout</ThemedText>
               </TouchableOpacity>
             </View>
 
             {/* Footer */}
             <View style={styles.footer}>
-              <ThemedText style={styles.footerText}>NowAndThen © 2026</ThemedText>
+              <ThemedText style={styles.footerText}>HereAndNow © 2026</ThemedText>
             </View>
           </>
         )}
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     paddingBottom: 20,
   },
   header: {
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   logoutText: {
-    color: '#FF3B30',
+    color: '#b35953ff',
     fontWeight: '600',
     fontSize: 16,
   },
