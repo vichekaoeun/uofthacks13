@@ -1,20 +1,24 @@
-import { StyleSheet, Alert, TouchableOpacity, View, ScrollView } from 'react-native';
+import { StyleSheet, Alert, TouchableOpacity, View, ScrollView, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import { useState } from 'react';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/contexts/AuthContext';
+import { API_URL } from '@/config/api';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, token, logout, updateUser } = useAuth();
   const isDark = colorScheme === 'dark';
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const handleLogout = () => {
     Alert.alert(
@@ -34,6 +38,70 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleProfilePhotoUpload = async () => {
+    try {
+      // Request permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to upload a profile photo.');
+        return;
+      }
+
+      // Pick image
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      setIsUploadingPhoto(true);
+
+      // Prepare form data
+      const formData = new FormData();
+      const uri = result.assets[0].uri;
+      const filename = uri.split('/').pop() || 'photo.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+      formData.append('photo', {
+        uri,
+        name: filename,
+        type,
+      } as any);
+
+      // Upload to backend
+      const response = await fetch(`${API_URL}/users/profile-photo`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to upload photo');
+      }
+
+      if (data.success) {
+        await updateUser(data.data);
+        Alert.alert('Success', 'Profile photo updated successfully!');
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      Alert.alert('Error', error.message || 'Failed to upload profile photo');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
@@ -50,12 +118,31 @@ export default function SettingsScreen() {
               <ThemedText style={styles.sectionTitle}>Account</ThemedText>
               <View style={[styles.card, { borderColor: isDark ? '#444' : '#ddd' }]}>
                 <View style={styles.profileHeader}>
-                  <View style={[styles.avatar, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}>
-                    <Ionicons name="person" size={24} color="#fff" />
-                  </View>
+                  <TouchableOpacity onPress={handleProfilePhotoUpload} disabled={isUploadingPhoto}>
+                    <View style={[styles.avatar, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}>
+                      {isUploadingPhoto ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : user.profilePhoto ? (
+                        <Image 
+                          source={{ uri: `${API_URL.replace('/api', '')}${user.profilePhoto}` }} 
+                          style={styles.avatarImage}
+                        />
+                      ) : (
+                        <Ionicons name="person" size={24} color="#fff" />
+                      )}
+                    </View>
+                    <View style={styles.cameraIconContainer}>
+                      <Ionicons name="camera" size={16} color="#fff" />
+                    </View>
+                  </TouchableOpacity>
                   <View style={styles.userInfo}>
                     <ThemedText style={styles.username}>{user.username}</ThemedText>
                     <ThemedText style={styles.email}>{user.email}</ThemedText>
+                    <TouchableOpacity onPress={handleProfilePhotoUpload} disabled={isUploadingPhoto}>
+                      <ThemedText style={[styles.changePhotoText, { color: Colors[colorScheme ?? 'light'].tint }]}>
+                        {isUploadingPhoto ? 'Uploading...' : user.profilePhoto ? 'Change photo' : 'Add photo'}
+                      </ThemedText>
+                    </TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -142,6 +229,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  cameraIconContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   userInfo: {
     flex: 1,
@@ -154,6 +258,11 @@ const styles = StyleSheet.create({
   email: {
     fontSize: 12,
     opacity: 0.6,
+  },
+  changePhotoText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
   aboutItem: {
     flexDirection: 'row',

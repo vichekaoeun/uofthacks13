@@ -6,6 +6,7 @@ class User {
     this.username = data.username;
     this.email = data.email;
     this.password = data.password;
+    this.profilePhoto = data.profilePhoto || null;
     this.friends = data.friends || [];
     this.friendRequests = data.friendRequests || [];
     this.createdAt = data.createdAt || new Date();

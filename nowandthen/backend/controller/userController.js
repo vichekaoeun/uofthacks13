@@ -218,9 +218,66 @@ const getUserById = async (req, res) => {
   }
 };
 
+// Update profile photo
+const updateProfilePhoto = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'No file uploaded' 
+      });
+    }
+
+    const db = getDB();
+    const usersCollection = db.collection('users');
+
+    // Construct the photo URL
+    const photoUrl = `/uploads/${req.file.filename}`;
+
+    // Update user's profile photo
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(req.user.userId) },
+      { 
+        $set: { 
+          profilePhoto: photoUrl,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    // Fetch updated user
+    const updatedUser = await usersCollection.findOne({ 
+      _id: new ObjectId(req.user.userId) 
+    });
+
+    const sanitizedUser = User.sanitize(updatedUser);
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile photo updated successfully',
+      data: sanitizedUser
+    });
+  } catch (error) {
+    console.error('Update profile photo error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error updating profile photo',
+      error: error.message 
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
   getCurrentUser,
-  getUserById
+  getUserById,
+  updateProfilePhoto
 };
