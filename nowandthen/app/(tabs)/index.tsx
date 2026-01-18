@@ -1122,6 +1122,22 @@ const animatePathLine = (_totalComments: number) => {
                       <ThemedText style={styles.clusterItemText}>
                         {item.content?.text || '—'}
                       </ThemedText>
+                      {item.content?.mediaUrl ? (
+                        item.contentType === 'video' ? (
+                          <Video
+                            style={styles.clusterMedia}
+                            source={{ uri: item.content.mediaUrl }}
+                            useNativeControls
+                            resizeMode={ResizeMode.COVER}
+                            isLooping
+                          />
+                        ) : (
+                          <Image
+                            source={{ uri: item.content.mediaUrl }}
+                            style={styles.clusterMedia}
+                          />
+                        )
+                      ) : null}
                       <View style={styles.clusterItemMetaRow}>
                         <ThemedText style={styles.clusterItemMeta}>
                           {new Date(item.createdAt).toLocaleString()}
@@ -1889,6 +1905,12 @@ const styles = StyleSheet.create({
   clusterItemText: {
     fontSize: 14,
     marginTop: 4,
+  },
+  clusterMedia: {
+    width: '100%',
+    height: 180,
+    borderRadius: 10,
+    marginTop: 8,
   },
   clusterItemMetaRow: {
     flexDirection: 'row',
