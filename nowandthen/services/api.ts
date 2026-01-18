@@ -91,12 +91,34 @@ export const commentsAPI = {
     return response.data;
   },
 
+  uploadMedia: async (file: { uri: string; type: 'photo' | 'video' }) => {
+    const formData = new FormData();
+    const nameFromUri = file.uri.split('/').pop();
+    const name = nameFromUri || `media-${Date.now()}`;
+    const mimeType = file.type === 'photo' ? 'image/jpeg' : 'video/mp4';
+
+    formData.append('file', {
+      uri: file.uri,
+      name,
+      type: mimeType,
+    } as any);
+
+    const response = await api.post('/comments/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   create: async (payload: {
     userId: string;
     username: string;
     lat: number;
     lon: number;
-    text: string;
+    text?: string;
+    contentType?: 'text' | 'photo' | 'video';
+    mediaUrl?: string | null;
   }) => {
     const response = await api.post('/comments', payload);
     return response.data;

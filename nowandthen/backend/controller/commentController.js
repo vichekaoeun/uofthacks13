@@ -69,6 +69,10 @@ exports.createComment = async (req, res) => {
     if (!userId || !username || !lon || !lat) {
       return res.status(400).json({ error: 'userId, username, lon, and lat are required' });
     }
+
+    if (!text && !mediaUrl) {
+      return res.status(400).json({ error: 'text or mediaUrl is required' });
+    }
     
     const db = getDB();
     const comment = {
@@ -102,6 +106,24 @@ exports.createComment = async (req, res) => {
     res.status(201).json({ 
       _id: result.insertedId,
       ...comment
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.uploadMedia = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'file is required' });
+    }
+
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    res.status(201).json({
+      url: fileUrl,
+      fileName: req.file.filename,
+      mimeType: req.file.mimetype
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
