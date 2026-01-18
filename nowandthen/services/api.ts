@@ -130,4 +130,16 @@ export const commentsAPI = {
   },
 };
 
+// AI API
+export const aiAPI = {
+  identityChat: async (payload: {
+    locationTitle: string;
+    posts: Array<{ id: string; username: string; text: string; createdAt: string }>;
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  }) => {
+    const response = await api.post('/ai/identity', payload);
+    return response.data;
+  },
+};
+
 export default api;

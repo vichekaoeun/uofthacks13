@@ -7,6 +7,7 @@ const { connectDB } = require('./database');
 const userRoutes = require('./routes/users');
 const friendRoutes = require('./routes/friends');
 const commentRoutes = require('./routes/comments');
+const aiRoutes = require('./routes/ai');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -39,6 +40,7 @@ app.get('/config', (req, res) => {
 app.use('/api/users', userRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 404 logger and handler
 app.use((req, res) => {
