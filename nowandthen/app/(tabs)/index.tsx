@@ -413,7 +413,7 @@ export default function HomeScreen() {
   }, [mode]);
 
   // Require a larger zoom-out before clustering kicks in to avoid small nearby groups
-  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 4.0, [region.latitudeDelta]);
+  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 6.0, [region.latitudeDelta]);
 
   const clusters = useMemo(() => {
     if (mode === 'follow' || !zoomedOutForClusters) return [] as PostCluster[];
