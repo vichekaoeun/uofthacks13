@@ -1,4 +1,5 @@
-const { ObjectId } = require('mongodb');
+const { ObjectId, GridFSBucket } = require('mongodb');
+const { Readable } = require('stream');
 const jwt = require('jsonwebtoken');
 const { getDB } = require('../database');
 
@@ -203,13 +204,92 @@ exports.uploadMedia = async (req, res) => {
       return res.status(400).json({ error: 'file is required' });
     }
 
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-
-    res.status(201).json({
-      url: fileUrl,
-      fileName: req.file.filename,
-      mimeType: req.file.mimetype
+    const db = getDB();
+    const bucket = new GridFSBucket(db, { bucketName: 'commentMedia' });
+    const uploadStream = bucket.openUploadStream(req.file.originalname, {
+      contentType: req.file.mimetype,
+      metadata: {
+        mimeType: req.file.mimetype,
+        originalName: req.file.originalname,
+      },
     });
+
+    const readable = Readable.from(req.file.buffer);
+    readable.pipe(uploadStream);
+
+    uploadStream.on('error', (err) => {
+      res.status(500).json({ error: err.message });
+    });
+
+    uploadStream.on('finish', () => {
+      const fileId = uploadStream.id;
+      const fileUrl = `${req.protocol}://${req.get('host')}/api/comments/media/${fileId}`;
+
+      res.status(201).json({
+        url: fileUrl,
+        fileId,
+        mimeType: req.file.mimetype,
+      });
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getMedia = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid media id' });
+    }
+
+    const db = getDB();
+    const bucket = new GridFSBucket(db, { bucketName: 'commentMedia' });
+    const fileId = new ObjectId(id);
+
+    const file = await db.collection('commentMedia.files').findOne({ _id: fileId });
+    if (!file) {
+      return res.status(404).json({ error: 'Media not found' });
+    }
+
+    const contentType = file.contentType || file.metadata?.mimeType || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    const range = req.headers.range;
+    if (range) {
+      const bytesPrefix = 'bytes=';
+      if (!range.startsWith(bytesPrefix)) {
+        return res.status(416).send('Malformed Range header');
+      }
+
+      const [startStr, endStr] = range.replace(bytesPrefix, '').split('-');
+      const start = parseInt(startStr, 10);
+      const end = endStr ? parseInt(endStr, 10) : file.length - 1;
+
+      if (Number.isNaN(start) || Number.isNaN(end) || start > end || end >= file.length) {
+        res.setHeader('Content-Range', `bytes */${file.length}`);
+        return res.status(416).end();
+      }
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${file.length}`);
+      res.setHeader('Content-Length', end - start + 1);
+
+      const downloadStream = bucket.openDownloadStream(fileId, { start, end: end + 1 });
+      downloadStream.on('error', () => {
+        res.status(404).json({ error: 'Media not found' });
+      });
+      return downloadStream.pipe(res);
+    }
+
+    res.setHeader('Content-Length', file.length);
+    const downloadStream = bucket.openDownloadStream(fileId);
+    downloadStream.on('error', () => {
+      res.status(404).json({ error: 'Media not found' });
+    });
+    downloadStream.pipe(res);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
