@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,11 +18,13 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/contexts/AuthContext';
 import { friendsAPI } from '@/services/api';
+import { API_URL } from '@/config/api';
 
 interface User {
   _id: string;
   username: string;
   email: string;
+  profilePhoto?: string | null;
 }
 
 interface FriendRequestUser extends User {
@@ -159,6 +162,16 @@ export default function FriendsScreen() {
 
   const renderSearchResult = ({ item }: { item: FriendRequestUser }) => (
     <ThemedView style={[styles.userCard, { borderColor: isDark ? '#444' : '#ddd' }]}>
+      <View style={[styles.avatar, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}>
+        {item.profilePhoto ? (
+          <Image 
+            source={{ uri: `${API_URL.replace('/api', '')}${item.profilePhoto}` }} 
+            style={styles.avatarImage}
+          />
+        ) : (
+          <Ionicons name="person" size={20} color="#fff" />
+        )}
+      </View>
       <View style={styles.userInfo}>
         <ThemedText style={styles.username}>{item.username}</ThemedText>
         <ThemedText style={styles.email}>{item.email}</ThemedText>
@@ -187,6 +200,16 @@ export default function FriendsScreen() {
 
   const renderFriendRequest = ({ item }: { item: User }) => (
     <ThemedView style={[styles.userCard, { borderColor: isDark ? '#444' : '#ddd' }]}>
+      <View style={[styles.avatar, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}>
+        {item.profilePhoto ? (
+          <Image 
+            source={{ uri: `${API_URL.replace('/api', '')}${item.profilePhoto}` }} 
+            style={styles.avatarImage}
+          />
+        ) : (
+          <Ionicons name="person" size={20} color="#fff" />
+        )}
+      </View>
       <View style={styles.userInfo}>
         <ThemedText style={styles.username}>{item.username}</ThemedText>
         <ThemedText style={styles.email}>{item.email}</ThemedText>
@@ -210,6 +233,16 @@ export default function FriendsScreen() {
 
   const renderFriend = ({ item }: { item: User }) => (
     <ThemedView style={[styles.userCard, { borderColor: isDark ? '#444' : '#ddd' }]}>
+      <View style={[styles.avatar, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}>
+        {item.profilePhoto ? (
+          <Image 
+            source={{ uri: `${API_URL.replace('/api', '')}${item.profilePhoto}` }} 
+            style={styles.avatarImage}
+          />
+        ) : (
+          <Ionicons name="person" size={20} color="#fff" />
+        )}
+      </View>
       <View style={styles.userInfo}>
         <ThemedText style={styles.username}>{item.username}</ThemedText>
         <ThemedText style={styles.email}>{item.email}</ThemedText>
@@ -395,6 +428,20 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   userInfo: {
     flex: 1,
