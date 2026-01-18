@@ -91,6 +91,7 @@ type CommentItem = {
     type: 'Point';
     coordinates: [number, number];
   };
+  contentType?: 'text' | 'photo' | 'video';
   content: {
     text: string | null;
     mediaUrl: string | null;
@@ -455,9 +456,14 @@ const animatePathLine = (_totalComments: number) => {
   }, stepDuration);
 }; 
   const handlePost = async () => {
-    if (!postContent.trim()) return;
-
     if (composeMode === 'comment') {
+      const trimmed = postContent.trim();
+
+      if (!trimmed && !mediaAttachment) {
+        Alert.alert('Add content', 'Please add text or attach a photo/video.');
+        return;
+      }
+
       if (!user || !currentLocation) {
         Alert.alert('Login required', 'Please login to send comments.');
         return;
@@ -465,15 +471,28 @@ const animatePathLine = (_totalComments: number) => {
 
       setIsSubmittingComment(true);
       try {
+        let mediaUrl: string | null = null;
+        let contentType: 'text' | 'photo' | 'video' = 'text';
+
+        if (mediaAttachment) {
+          const uploadResult = await commentsAPI.uploadMedia(mediaAttachment);
+          mediaUrl = uploadResult?.url || null;
+          contentType = mediaAttachment.type;
+        }
+
         const created = await commentsAPI.create({
           userId: user._id,
           username: user.username,
           lat: currentLocation.coords.latitude,
           lon: currentLocation.coords.longitude,
-          text: postContent.trim(),
+          text: trimmed || undefined,
+          contentType,
+          mediaUrl,
         });
+
         // Mark the time we posted to prevent fetch from overwriting
         lastPostTimeRef.current = Date.now();
+
         // Ensure the comment has the correct structure for display
         const commentId = created._id || `temp-${Date.now()}`;
         const newComment: CommentItem = {
@@ -485,22 +504,31 @@ const animatePathLine = (_totalComments: number) => {
             type: 'Point',
             coordinates: [currentLocation.coords.longitude, currentLocation.coords.latitude],
           },
+          contentType: created.contentType || contentType,
           content: created.content || {
-            text: postContent.trim(),
-            mediaUrl: null,
+            text: trimmed || null,
+            mediaUrl,
           },
           createdAt: created.createdAt || new Date().toISOString(),
         };
+
         setComments((prev) => [newComment, ...prev]);
         setPostContent('');
+        setMediaAttachment(null);
         setShowPostModal(false);
       } catch (error) {
-        Alert.alert('Error', 'Failed to send comment.');
+        const message =
+          (error as any)?.response?.data?.error ||
+          (error as any)?.message ||
+          'Failed to send comment.';
+        Alert.alert('Error', message);
       } finally {
         setIsSubmittingComment(false);
       }
       return;
     }
+
+    if (!postContent.trim()) return;
 
     console.log('Posting:', postContent, 'Media:', mediaAttachment);
     // TODO: send post to MongoDB when media uploads are wired
@@ -734,6 +762,25 @@ const animatePathLine = (_totalComments: number) => {
             <ThemedText style={styles.commentSheetText}>
               {selectedComment.content?.text || '—'}
             </ThemedText>
+            {selectedComment.content?.mediaUrl ? (
+              <View style={styles.commentMediaContainer}>
+                {selectedComment.contentType === 'video' ||
+                selectedComment.content?.mediaUrl?.match(/\.(mp4|mov|m4v|webm)$/i) ? (
+                  <Video
+                    style={styles.commentMedia}
+                    source={{ uri: selectedComment.content.mediaUrl }}
+                    useNativeControls
+                    resizeMode={ResizeMode.COVER}
+                    isLooping
+                  />
+                ) : (
+                  <Image
+                    source={{ uri: selectedComment.content.mediaUrl }}
+                    style={styles.commentMedia}
+                  />
+                )}
+              </View>
+            ) : null}
             <ThemedText style={styles.commentSheetMeta}>
               {new Date(selectedComment.createdAt).toLocaleString()}
             </ThemedText>
@@ -860,14 +907,14 @@ const animatePathLine = (_totalComments: number) => {
                     styles.textInput,
                     { color: Colors[colorScheme ?? 'light'].text },
                   ]}
-                  placeholder="What makes this place yours?"
+                  placeholder={composeMode === 'comment' ? 'Add a note or caption...' : 'What makes this place yours?'}
                   placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
                   multiline
                   value={postContent}
                   onChangeText={setPostContent}
                 />
 
-                {composeMode === 'post' ? (
+                {composeMode === 'comment' || composeMode === 'post' ? (
                   <>
                     {/* Selected Media */}
                     {mediaAttachment && (
@@ -999,6 +1046,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 4,
+    zIndex: 5,
   },
   headerRow: {
     flexDirection: 'row',
@@ -1193,6 +1241,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
     padding: 24,
+    zIndex: 20,
+    elevation: 20,
   },
   commentSheet: {
     width: '100%',
@@ -1214,6 +1264,15 @@ const styles = StyleSheet.create({
   commentSheetText: {
     fontSize: 16,
     marginBottom: 8,
+  },
+  commentMediaContainer: {
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  commentMedia: {
+    width: '100%',
+    height: 220,
   },
   commentSheetMeta: {
     fontSize: 12,
