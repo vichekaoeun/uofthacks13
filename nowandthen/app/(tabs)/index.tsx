@@ -698,15 +698,6 @@ const animatePathLine = (_totalComments: number) => {
         onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation
         showsMyLocationButton>
-        {currentLocation ? (
-          <Marker
-            coordinate={{
-              latitude: currentLocation.coords.latitude,
-              longitude: currentLocation.coords.longitude,
-            }}
-            title="You"
-          />
-        ) : null}
         {/* Path Polyline - connects comments in chronological order (only when zoomed in) */}
         {isAnimatingPath && selectedUserId && (mode === 'follow' || !zoomedOutForClusters) && (() => {
           const userComments = getUserComments(selectedUserId);
