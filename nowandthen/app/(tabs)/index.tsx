@@ -1832,7 +1832,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.06)',
   },
   clusterTabOptionActive: {
-    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+    backgroundColor: 'rgba(54, 135, 58, 0.25)',
   },
   clusterSortRow: {
     flexDirection: 'row',
@@ -1848,7 +1848,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.06)',
   },
   clusterSortOptionActive: {
-    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+    backgroundColor: 'rgba(54, 135, 58, 0.25)',
   },
   clusterList: {
     maxHeight: 360,
@@ -1905,7 +1905,7 @@ const styles = StyleSheet.create({
   },
   identityBubbleUser: {
     alignSelf: 'flex-end',
-    backgroundColor: 'rgba(0, 122, 255, 0.18)',
+    backgroundColor: 'rgba(54, 135, 58, 0.25)',
   },
   identityBubbleAssistant: {
     alignSelf: 'flex-start',
