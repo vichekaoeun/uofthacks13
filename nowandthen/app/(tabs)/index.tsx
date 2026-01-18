@@ -317,7 +317,7 @@ export default function HomeScreen() {
     }
   }, [mode]);
 
-  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 6, [region.latitudeDelta]);
+  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 2, [region.latitudeDelta]);
 
   const clusters = useMemo(() => {
     if (mode === 'follow' || !zoomedOutForClusters) return [] as PostCluster[];
@@ -373,7 +373,6 @@ export default function HomeScreen() {
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start();
-  }, [mode, vignetteOpacity]);
   }, [mode, vignetteOpacity]);
 
   useEffect(() => {
@@ -685,16 +684,6 @@ const animatePathLine = (_totalComments: number) => {
         onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation
         showsMyLocationButton>
-        {currentLocation ? (
-          <Marker
-            coordinate={{
-              latitude: currentLocation.coords.latitude,
-              longitude: currentLocation.coords.longitude,
-            }}
-            title="You"
-          />
-        ) : null}
-        {/* Path Polyline - connects comments in chronological order (only when zoomed in) */}
         {isAnimatingPath && selectedUserId && (mode === 'follow' || !zoomedOutForClusters) && (() => {
           const userComments = getUserComments(selectedUserId);
           const fullPath = getInterpolatedPath(userComments);
@@ -1095,8 +1084,8 @@ const getMedian = (values: number[]) => {
 
 const buildClusters = (items: CommentItem[], region: Region): PostCluster[] => {
   if (items.length === 0) return [];
-  const latGrid = Math.max(0.0015, region.latitudeDelta / 8);
-  const lonGrid = Math.max(0.0015, region.longitudeDelta / 8);
+  const latGrid = Math.max(0.0015, region.latitudeDelta / 3);
+  const lonGrid = Math.max(0.0015, region.longitudeDelta / 3);
 
   const buckets = new Map<string, CommentItem[]>();
   items.forEach((item) => {
