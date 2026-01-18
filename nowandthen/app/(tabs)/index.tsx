@@ -736,6 +736,8 @@ const animatePathLine = (_totalComments: number) => {
                   }}
                   title={comment.displayUsername || comment.username}
                   description={comment.content?.text ?? ''}
+                  anchor={{ x: 0.5, y: 1 }}
+                  centerOffset={{ x: 0, y: 0 }}
                   
                   onPress={() => {
                     // Try path animation first (only for non-anonymous users with >1 comment)
@@ -753,17 +755,15 @@ const animatePathLine = (_totalComments: number) => {
                     setSelectedComment(comment);
                   }}  
                 >
-                <Image
-                  source={isAnonymous 
-                    ? require('@/assets/images/add-comment.png')
-                    : require('@/assets/images/add-comment-friend.png')
-                  }
-                  style={{
-                    width: 40,
-                    height: 30,
-                    resizeMode: 'contain',
-                  }}
-                />
+                <View style={styles.markerWrapper}>
+                  <Image
+                    source={isAnonymous 
+                      ? require('@/assets/images/add-comment.png')
+                      : require('@/assets/images/add-comment-friend.png')
+                    }
+                    style={styles.markerImage}
+                  />
+                </View>
                 </Marker>
               );
             })
@@ -1161,6 +1161,17 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  markerWrapper: {
+    width: Platform.OS === 'android' ? 33 : 48,
+    height: Platform.OS === 'android' ? 31 : 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
   pathAnimationStatus: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1419,7 +1430,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    padding: 24,
+    //padding: Platform.OS === 'android' ? 12 : 24,
     zIndex: 20,
     elevation: 20,
   },
