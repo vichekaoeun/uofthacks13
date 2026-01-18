@@ -274,6 +274,33 @@ export default function HomeScreen() {
     setSelectedCluster(null);
   };
 
+  const handleLike = (commentId: string) => {
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment._id === commentId
+          ? { ...comment, likes: (comment.likes ?? 0) + 1 }
+          : comment
+      )
+    );
+    setSelectedComment((prev) =>
+      prev && prev._id === commentId
+        ? { ...prev, likes: (prev.likes ?? 0) + 1 }
+        : prev
+    );
+    setSelectedCluster((prev) =>
+      prev
+        ? {
+            ...prev,
+            items: prev.items.map((item) =>
+              item._id === commentId
+                ? { ...item, likes: (item.likes ?? 0) + 1 }
+                : item
+            ),
+          }
+        : prev
+    );
+  };
+
   const handleRegionChange = (nextRegion: Region) => {
     if (isAnimatingRef.current) return;
     if (!currentLocation) return;
@@ -838,9 +865,19 @@ const animatePathLine = (_totalComments: number) => {
                 )}
               </View>
             ) : null}
-            <ThemedText style={styles.commentSheetMeta}>
-              {new Date(selectedComment.createdAt).toLocaleString()}
-            </ThemedText>
+            <View style={styles.commentMetaRow}>
+              <ThemedText style={styles.commentSheetMeta}>
+                {new Date(selectedComment.createdAt).toLocaleString()}
+              </ThemedText>
+              <Pressable
+                style={styles.likeButton}
+                onPress={() => handleLike(selectedComment._id)}>
+                <Ionicons name="heart" size={14} color="#FF3B30" />
+                <ThemedText style={styles.likeButtonText}>
+                  {selectedComment.likes ?? 0}
+                </ThemedText>
+              </Pressable>
+            </View>
           </View>
         </Pressable>
       ) : null}
@@ -901,12 +938,14 @@ const animatePathLine = (_totalComments: number) => {
                     <ThemedText style={styles.clusterItemMeta}>
                       {new Date(item.createdAt).toLocaleString()}
                     </ThemedText>
-                    <View style={styles.clusterLikeBadge}>
+                    <Pressable
+                      style={styles.clusterLikeBadge}
+                      onPress={() => handleLike(item._id)}>
                       <Ionicons name="heart" size={12} color="#FF3B30" />
                       <ThemedText style={styles.clusterLikeText}>
                         {item.likes ?? 0}
                       </ThemedText>
-                    </View>
+                    </Pressable>
                   </View>
                 </View>
               ))}
@@ -1471,6 +1510,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.6,
   },
+  commentMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.12)',
+  },
+  likeButtonText: {
+    fontSize: 12,
+  },
   clusterSheet: {
     width: '100%',
     maxWidth: 420,
@@ -1532,6 +1588,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.12)',
   },
   clusterLikeText: {
     fontSize: 12,
