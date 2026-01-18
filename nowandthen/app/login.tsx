@@ -50,7 +50,7 @@ export default function LoginScreen() {
           resizeMode="contain"
         />
         <Text style={styles.title}>NowAndThen</Text>
-        <Text style={styles.subtitle}>Where places become stories</Text>
+        <Text style={styles.subtitle}>Where places become stories.</Text>
 
         <View style={styles.form}>
           <TextInput
