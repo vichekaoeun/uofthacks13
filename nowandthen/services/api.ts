@@ -123,6 +123,11 @@ export const commentsAPI = {
     const response = await api.post('/comments', payload);
     return response.data;
   },
+
+  toggleLike: async (commentId: string) => {
+    const response = await api.post(`/comments/${commentId}/like`);
+    return response.data;
+  },
 };
 
 export default api;

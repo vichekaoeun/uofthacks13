@@ -1,4 +1,5 @@
 const { ObjectId } = require('mongodb');
+const jwt = require('jsonwebtoken');
 const { getDB } = require('../database');
 
 exports.getComments = async (req, res) => {
@@ -23,6 +24,9 @@ exports.getComments = async (req, res) => {
     };
     
     if (userId) {
+      if (!ObjectId.isValid(userId)) {
+        return res.status(400).json({ error: 'Invalid userId' });
+      }
       query.userId = new ObjectId(userId);
     }
     
@@ -31,11 +35,31 @@ exports.getComments = async (req, res) => {
       .limit(50)
       .toArray();
     
+    // Resolve requesting user id from query or Authorization header
+    let effectiveRequestingUserId = requestingUserId;
+    if (!effectiveRequestingUserId) {
+      const authHeader = req.header('Authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          if (decoded && decoded.userId) {
+            effectiveRequestingUserId = decoded.userId;
+          }
+        } catch (_err) {
+          // ignore invalid token for public comments feed
+        }
+      }
+    }
+
     // Get the requesting user's friend list if provided
     let friendIds = [];
-    if (requestingUserId) {
+    if (effectiveRequestingUserId) {
+      if (!ObjectId.isValid(effectiveRequestingUserId)) {
+        return res.status(400).json({ error: 'Invalid requestingUserId' });
+      }
       const requestingUser = await db.collection('users').findOne(
-        { _id: new ObjectId(requestingUserId) },
+        { _id: new ObjectId(effectiveRequestingUserId) },
         { projection: { friends: 1 } }
       );
       
@@ -43,16 +67,22 @@ exports.getComments = async (req, res) => {
         friendIds = requestingUser.friends.map(id => id.toString());
       }
     }
-    
+
     // Process comments to show names only for friends
     const processedComments = comments.map(comment => {
       const commentUserIdStr = comment.userId.toString();
       const isFriend = friendIds.includes(commentUserIdStr);
-      const isOwnComment = requestingUserId && commentUserIdStr === requestingUserId;
+      const isOwnComment = effectiveRequestingUserId && commentUserIdStr === effectiveRequestingUserId;
+
+      const likedBy = Array.isArray(comment.likedBy) ? comment.likedBy : [];
+      const likedByMe = effectiveRequestingUserId
+        ? likedBy.some(id => id.toString() === effectiveRequestingUserId)
+        : false;
       
       return {
         ...comment,
-        displayUsername: (isFriend || isOwnComment) ? comment.username : 'anonymous'
+        displayUsername: (isFriend || isOwnComment) ? comment.username : 'anonymous',
+        likedByMe
       };
     });
     
@@ -97,6 +127,7 @@ exports.createComment = async (req, res) => {
       expiresAt: null,
       isPublic: true,
       likes: 0,
+      likedBy: [],
       trailId: null,
       sequenceNumber: null
     };
@@ -109,6 +140,60 @@ exports.createComment = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+exports.toggleLike = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    if (!ObjectId.isValid(commentId)) {
+      return res.status(400).json({ success: false, message: 'Invalid comment ID' });
+    }
+
+    const userId = req.user?.userId;
+    if (!userId || !ObjectId.isValid(userId)) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const db = getDB();
+    const commentsCollection = db.collection('comments');
+    const commentObjectId = new ObjectId(commentId);
+    const userObjectId = new ObjectId(userId);
+
+    // Try like (only if not already liked)
+    const likeResult = await commentsCollection.updateOne(
+      { _id: commentObjectId, likedBy: { $ne: userObjectId } },
+      { $addToSet: { likedBy: userObjectId }, $inc: { likes: 1 } }
+    );
+
+    if (likeResult.matchedCount === 1) {
+      const updated = await commentsCollection.findOne(
+        { _id: commentObjectId },
+        { projection: { likes: 1, likedBy: 1 } }
+      );
+      return res.json({ likes: updated?.likes ?? 0, liked: true });
+    }
+
+    // Otherwise unlike
+    await commentsCollection.updateOne(
+      { _id: commentObjectId, likedBy: userObjectId },
+      { $pull: { likedBy: userObjectId }, $inc: { likes: -1 } }
+    );
+
+    // Clamp to zero just in case
+    await commentsCollection.updateOne(
+      { _id: commentObjectId, likes: { $lt: 0 } },
+      { $set: { likes: 0 } }
+    );
+
+    const updated = await commentsCollection.findOne(
+      { _id: commentObjectId },
+      { projection: { likes: 1, likedBy: 1 } }
+    );
+
+    return res.json({ likes: updated?.likes ?? 0, liked: false });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

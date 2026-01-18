@@ -98,6 +98,7 @@ type CommentItem = {
     mediaUrl: string | null;
   };
   likes?: number;
+  likedByMe?: boolean;
   createdAt: string;
 };
 
@@ -115,6 +116,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const mapRef = useRef<MapView | null>(null);
+  const buttonHitSlop = { top: 10, bottom: 10, left: 10, right: 10 };
   const [region, setRegion] = useState<Region>(FALLBACK_REGION);
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -144,6 +146,7 @@ export default function HomeScreen() {
   const wasInFollowModeRef = useRef(false);
 
   const lastPostTimeRef = useRef<number>(0);
+  const lastLikeActionRef = useRef<number>(0);
   const fetchCommentsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
@@ -274,6 +277,100 @@ export default function HomeScreen() {
     setSelectedCluster(null);
   };
 
+  const handleLike = async (commentId: string) => {
+    if (!user?._id) {
+      Alert.alert('Login required', 'Please log in to like posts.');
+      return;
+    }
+    lastLikeActionRef.current = Date.now();
+    const findExisting = (items: CommentItem[]) => items.find((c) => c._id === commentId);
+
+    const existing =
+      findExisting(comments) ||
+      (selectedComment && selectedComment._id === commentId ? selectedComment : undefined) ||
+      (selectedCluster ? findExisting(selectedCluster.items) : undefined);
+
+    const wasLikedByMe = existing?.likedByMe ?? false;
+    const previousLikes = existing?.likes ?? 0;
+
+    const applyOptimistic = (items: CommentItem[]) =>
+      items.map((c) =>
+        c._id === commentId
+          ? {
+              ...c,
+              likedByMe: !wasLikedByMe,
+              likes: Math.max(0, (c.likes ?? 0) + (wasLikedByMe ? -1 : 1)),
+            }
+          : c
+      );
+
+    setComments((prev) => applyOptimistic(prev));
+    setSelectedComment((prev) =>
+      prev && prev._id === commentId
+        ? {
+            ...prev,
+            likedByMe: !wasLikedByMe,
+            likes: Math.max(0, (prev.likes ?? 0) + (wasLikedByMe ? -1 : 1)),
+          }
+        : prev
+    );
+    setSelectedCluster((prev) =>
+      prev
+        ? {
+            ...prev,
+            items: applyOptimistic(prev.items),
+          }
+        : prev
+    );
+
+    try {
+      const result = await commentsAPI.toggleLike(commentId);
+      if (typeof result?.likes === 'number' && typeof result?.liked === 'boolean') {
+        setComments((prev) =>
+          prev.map((c) =>
+            c._id === commentId ? { ...c, likes: result.likes, likedByMe: result.liked } : c
+          )
+        );
+        setSelectedComment((prev) =>
+          prev && prev._id === commentId
+            ? { ...prev, likes: result.likes, likedByMe: result.liked }
+            : prev
+        );
+        setSelectedCluster((prev) =>
+          prev
+            ? {
+                ...prev,
+                items: prev.items.map((c) =>
+                  c._id === commentId ? { ...c, likes: result.likes, likedByMe: result.liked } : c
+                ),
+              }
+            : prev
+        );
+      }
+    } catch (_err) {
+      setComments((prev) =>
+        prev.map((c) =>
+          c._id === commentId ? { ...c, likes: previousLikes, likedByMe: wasLikedByMe } : c
+        )
+      );
+      setSelectedComment((prev) =>
+        prev && prev._id === commentId
+          ? { ...prev, likes: previousLikes, likedByMe: wasLikedByMe }
+          : prev
+      );
+      setSelectedCluster((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((c) =>
+                c._id === commentId ? { ...c, likes: previousLikes, likedByMe: wasLikedByMe } : c
+              ),
+            }
+          : prev
+      );
+    }
+  };
+
   const handleRegionChange = (nextRegion: Region) => {
     if (isAnimatingRef.current) return;
     if (!currentLocation) return;
@@ -304,7 +401,7 @@ export default function HomeScreen() {
     }
   }, [mode]);
 
-  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 6, [region.latitudeDelta]);
+  const zoomedOutForClusters = useMemo(() => region.latitudeDelta > FOLLOW_DELTA * 1.2, [region.latitudeDelta]);
 
   const clusters = useMemo(() => {
     if (mode === 'follow' || !zoomedOutForClusters) return [] as PostCluster[];
@@ -375,6 +472,10 @@ export default function HomeScreen() {
     const timeSinceLastPost = Date.now() - lastPostTimeRef.current;
     if (timeSinceLastPost < 2000) return;
 
+    // Skip fetch if we just liked/unliked a comment (within 2 seconds)
+    const timeSinceLastLike = Date.now() - lastLikeActionRef.current;
+    if (timeSinceLastLike < 2000) return;
+
     try {
       const data = await commentsAPI.getNearby(
         currentLocation.coords.latitude,
@@ -386,7 +487,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.log('Failed to load comments', error);
     }
-  }, 500);
+  }, 1500);
 
   return () => {
     if (fetchCommentsTimeoutRef.current) {
@@ -740,16 +841,14 @@ const animatePathLine = (_totalComments: number) => {
                   centerOffset={{ x: 0, y: 0 }}
                   
                   onPress={() => {
-                    // Try path animation first (only for non-anonymous users with >1 comment)
+                    // Start path animation if available, but always open the comment sheet
                     if (comment.displayUsername !== 'anonymous') {
                       const userComments = getUserComments(comment.userId);
                       if (userComments.length > 1) {
                         handleMarkerPress(comment);
-                        return;
                       }
                     }
 
-                    // Otherwise open the comment sheet
                     wasInFollowModeRef.current = mode === 'follow';
                     setSelectedCluster(null);
                     setSelectedComment(comment);
@@ -799,21 +898,24 @@ const animatePathLine = (_totalComments: number) => {
       </Animated.View>
 
       {selectedComment ? (
-        <Pressable
-          style={styles.commentSheetBackdrop}
-          onPress={handleCloseComment}>
-          <View
-            style={[
-              styles.commentSheet,
-              {
-                backgroundColor: Colors[colorScheme ?? 'light'].background,
-                borderColor: Colors[colorScheme ?? 'light'].text + '20',
-              },
-            ]}
-            onStartShouldSetResponder={() => true}>
+        <View style={styles.sheetOverlay} pointerEvents="box-none">
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={handleCloseComment}
+            hitSlop={buttonHitSlop}
+          />
+          <View style={styles.sheetCenter} pointerEvents="box-none">
+            <View
+              style={[
+                styles.commentSheet,
+                {
+                  backgroundColor: Colors[colorScheme ?? 'light'].background,
+                  borderColor: Colors[colorScheme ?? 'light'].text + '20',
+                },
+              ]}>
             <View style={styles.commentSheetHeader}>
-              <ThemedText type="defaultSemiBold">{selectedComment.displayUsername || selectedComment.username}</ThemedText>
-              <Pressable onPress={handleCloseComment}>
+              <ThemedText type="defaultSemiBold">{selectedComment.username}</ThemedText>
+              <Pressable onPress={handleCloseComment} hitSlop={buttonHitSlop}>
                 <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
               </Pressable>
             </View>
@@ -839,23 +941,45 @@ const animatePathLine = (_totalComments: number) => {
                 )}
               </View>
             ) : null}
-            <ThemedText style={styles.commentSheetMeta}>
-              {new Date(selectedComment.createdAt).toLocaleString()}
-            </ThemedText>
+            <View style={styles.commentMetaRow}>
+              <ThemedText style={styles.commentSheetMeta}>
+                {new Date(selectedComment.createdAt).toLocaleString()}
+              </ThemedText>
+              <Pressable
+                style={styles.likeButton}
+                onPress={() => void handleLike(selectedComment._id)}
+                hitSlop={buttonHitSlop}>
+                <Ionicons
+                  name={selectedComment.likedByMe ? 'heart' : 'heart-outline'}
+                  size={14}
+                  color="#FF3B30"
+                />
+                <ThemedText style={styles.likeButtonText}>
+                  {selectedComment.likes ?? 0}
+                </ThemedText>
+              </Pressable>
+            </View>
+            </View>
           </View>
-        </Pressable>
+        </View>
       ) : null}
 
       {selectedCluster ? (
-        <Pressable style={styles.commentSheetBackdrop} onPress={handleCloseCluster}>
-          <View
-            style={[
-              styles.clusterSheet,
-              {
-                backgroundColor: Colors[colorScheme ?? 'light'].background,
-                borderColor: Colors[colorScheme ?? 'light'].text + '20',
-              },
-            ]}>
+        <View style={styles.sheetOverlay} pointerEvents="box-none">
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={handleCloseCluster}
+            hitSlop={buttonHitSlop}
+          />
+          <View style={styles.sheetCenter} pointerEvents="box-none">
+            <View
+              style={[
+                styles.clusterSheet,
+                {
+                  backgroundColor: Colors[colorScheme ?? 'light'].background,
+                  borderColor: Colors[colorScheme ?? 'light'].text + '20',
+                },
+              ]}>
             <View style={styles.commentSheetHeader}>
               <View style={styles.clusterHeaderText}>
                 <ThemedText type="defaultSemiBold">
@@ -865,7 +989,7 @@ const animatePathLine = (_totalComments: number) => {
                   {selectedCluster.items.length} posts
                 </ThemedText>
               </View>
-              <Pressable onPress={handleCloseCluster}>
+              <Pressable onPress={handleCloseCluster} hitSlop={buttonHitSlop}>
                 <Ionicons name="close" size={20} color={Colors[colorScheme ?? 'light'].text} />
               </Pressable>
             </View>
@@ -876,7 +1000,8 @@ const animatePathLine = (_totalComments: number) => {
                   styles.clusterSortOption,
                   clusterSortMode === 'recent' && styles.clusterSortOptionActive,
                 ]}
-                onPress={() => setClusterSortMode('recent')}>
+                onPress={() => setClusterSortMode('recent')}
+                hitSlop={buttonHitSlop}>
                 <ThemedText type="defaultSemiBold">Newest</ThemedText>
               </Pressable>
               <Pressable
@@ -884,12 +1009,13 @@ const animatePathLine = (_totalComments: number) => {
                   styles.clusterSortOption,
                   clusterSortMode === 'likes' && styles.clusterSortOptionActive,
                 ]}
-                onPress={() => setClusterSortMode('likes')}>
+                onPress={() => setClusterSortMode('likes')}
+                hitSlop={buttonHitSlop}>
                 <ThemedText type="defaultSemiBold">Top</ThemedText>
               </Pressable>
             </View>
 
-            <ScrollView style={styles.clusterList}>
+            <ScrollView style={styles.clusterList} nestedScrollEnabled>
               {sortedClusterItems.map((item) => (
                 <View key={item._id} style={styles.clusterItem}>
                   <ThemedText type="defaultSemiBold">
@@ -902,18 +1028,26 @@ const animatePathLine = (_totalComments: number) => {
                     <ThemedText style={styles.clusterItemMeta}>
                       {new Date(item.createdAt).toLocaleString()}
                     </ThemedText>
-                    <View style={styles.clusterLikeBadge}>
-                      <Ionicons name="heart" size={12} color="#FF3B30" />
+                    <Pressable
+                      style={styles.clusterLikeBadge}
+                      onPress={() => void handleLike(item._id)}
+                      hitSlop={buttonHitSlop}>
+                      <Ionicons
+                        name={item.likedByMe ? 'heart' : 'heart-outline'}
+                        size={12}
+                        color="#FF3B30"
+                      />
                       <ThemedText style={styles.clusterLikeText}>
                         {item.likes ?? 0}
                       </ThemedText>
-                    </View>
+                    </Pressable>
                   </View>
                 </View>
               ))}
             </ScrollView>
+            </View>
           </View>
-        </Pressable>
+        </View>
       ) : null}
 
       <View style={overlayStyle}>
@@ -933,27 +1067,32 @@ const animatePathLine = (_totalComments: number) => {
           <View style={styles.radiusButtons}>
             <Pressable 
               style={[styles.radiusButton, commentRadius === 25 && styles.radiusButtonActive]}
-              onPress={() => setCommentRadius(25)}>
+              onPress={() => setCommentRadius(25)}
+              hitSlop={buttonHitSlop}>
               <ThemedText style={[styles.radiusButtonText, commentRadius === 25 && styles.radiusButtonTextActive]}>25m</ThemedText>
             </Pressable>
             <Pressable 
               style={[styles.radiusButton, commentRadius === 50 && styles.radiusButtonActive]}
-              onPress={() => setCommentRadius(50)}>
+              onPress={() => setCommentRadius(50)}
+              hitSlop={buttonHitSlop}>
               <ThemedText style={[styles.radiusButtonText, commentRadius === 50 && styles.radiusButtonTextActive]}>50m</ThemedText>
             </Pressable>
             <Pressable 
               style={[styles.radiusButton, commentRadius === 100 && styles.radiusButtonActive]}
-              onPress={() => setCommentRadius(100)}>
+              onPress={() => setCommentRadius(100)}
+              hitSlop={buttonHitSlop}>
               <ThemedText style={[styles.radiusButtonText, commentRadius === 100 && styles.radiusButtonTextActive]}>100m</ThemedText>
             </Pressable>
             <Pressable 
               style={[styles.radiusButton, commentRadius === 500 && styles.radiusButtonActive]}
-              onPress={() => setCommentRadius(500)}>
+              onPress={() => setCommentRadius(500)}
+              hitSlop={buttonHitSlop}>
               <ThemedText style={[styles.radiusButtonText, commentRadius === 500 && styles.radiusButtonTextActive]}>500m</ThemedText>
             </Pressable>
             <Pressable 
               style={[styles.radiusButton, commentRadius === 1000 && styles.radiusButtonActive]}
-              onPress={() => setCommentRadius(1000)}>
+              onPress={() => setCommentRadius(1000)}
+              hitSlop={buttonHitSlop}>
               <ThemedText style={[styles.radiusButtonText, commentRadius === 1000 && styles.radiusButtonTextActive]}>1km</ThemedText>
             </Pressable>
           </View>
@@ -963,7 +1102,7 @@ const animatePathLine = (_totalComments: number) => {
         {loading ? (
           <ActivityIndicator style={styles.spinner} />
         ) : (
-          <Pressable style={styles.recenterButton} onPress={handleRecenter}>
+          <Pressable style={styles.recenterButton} onPress={handleRecenter} hitSlop={buttonHitSlop}>
             <ThemedText type="defaultSemiBold" style={{ color: '#525b51ff' }}>Re-center</ThemedText>
           </Pressable>
         )}
@@ -973,7 +1112,8 @@ const animatePathLine = (_totalComments: number) => {
         onPress={() => {
           setComposeMode('comment');
           setShowPostModal(true);
-        }}>
+        }}
+        hitSlop={buttonHitSlop}>
         <Ionicons name="add" size={32} color="#fff" />
       </Pressable>
 
@@ -992,13 +1132,16 @@ const animatePathLine = (_totalComments: number) => {
             <View style={[styles.modalContent, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
               {/* Header */}
               <View style={styles.modalHeader}>
-                <Pressable onPress={() => setShowPostModal(false)}>
+                <Pressable onPress={() => setShowPostModal(false)} hitSlop={buttonHitSlop}>
                   <Ionicons name="close" size={28} color={Colors[colorScheme ?? 'light'].text} />
                 </Pressable>
                 <ThemedText type="title">
                   Add Comment
                 </ThemedText>
-                <Pressable onPress={handlePost} disabled={!postContent.trim() || isSubmittingComment}>
+                <Pressable
+                  onPress={handlePost}
+                  disabled={!postContent.trim() || isSubmittingComment}
+                  hitSlop={buttonHitSlop}>
                   <ThemedText
                     type="defaultSemiBold"
                     style={{
@@ -1007,6 +1150,21 @@ const animatePathLine = (_totalComments: number) => {
                   >
                     Send
                   </ThemedText>
+                </Pressable>
+              </View>
+
+              <View style={styles.modeToggle}>
+                <Pressable
+                  style={[styles.modeOption, composeMode === 'comment' && styles.modeOptionActive]}
+                  onPress={() => setComposeMode('comment')}
+                  hitSlop={buttonHitSlop}>
+                  <ThemedText type="defaultSemiBold">Comment</ThemedText>
+                </Pressable>
+                <Pressable
+                  style={[styles.modeOption, composeMode === 'post' && styles.modeOptionActive]}
+                  onPress={() => setComposeMode('post')}
+                  hitSlop={buttonHitSlop}>
+                  <ThemedText type="defaultSemiBold">Post</ThemedText>
                 </Pressable>
               </View>
 
@@ -1042,6 +1200,7 @@ const animatePathLine = (_totalComments: number) => {
                         <Pressable
                           style={styles.removeMediaButton}
                           onPress={() => setMediaAttachment(null)}
+                          hitSlop={buttonHitSlop}
                         >
                           <Ionicons name="close-circle" size={28} color="#fff" />
                         </Pressable>
@@ -1049,7 +1208,7 @@ const animatePathLine = (_totalComments: number) => {
                     )}
 
                     {/* Media Upload Button */}
-                    <Pressable style={styles.mediaButton} onPress={handleAddMedia}>
+                    <Pressable style={styles.mediaButton} onPress={handleAddMedia} hitSlop={buttonHitSlop}>
                       <Ionicons name="image" size={24} color="#007AFF" />
                       <ThemedText type="defaultSemiBold" style={{ color: '#007AFF', marginLeft: 8 }}>
                         Add Photo or Video
@@ -1093,8 +1252,10 @@ const getMedian = (values: number[]) => {
 
 const buildClusters = (items: CommentItem[], region: Region): PostCluster[] => {
   if (items.length === 0) return [];
-  const latGrid = Math.max(0.0015, region.latitudeDelta / 8);
-  const lonGrid = Math.max(0.0015, region.longitudeDelta / 8);
+  // Non-linear zoom factor: clusters expand faster the further out you are
+  const zoomFactor = Math.max(1, Math.pow(region.latitudeDelta / FOLLOW_DELTA, 1.5));
+  const latGrid = Math.max(0.0005, (region.latitudeDelta / 3) * zoomFactor);
+  const lonGrid = Math.max(0.0005, (region.longitudeDelta / 3) * zoomFactor);
 
   const buckets = new Map<string, CommentItem[]>();
   items.forEach((item) => {
@@ -1434,6 +1595,21 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 20,
   },
+  sheetOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    elevation: 20,
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  sheetCenter: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
   commentSheet: {
     width: '100%',
     maxWidth: 360,
@@ -1467,6 +1643,23 @@ const styles = StyleSheet.create({
   commentSheetMeta: {
     fontSize: 12,
     opacity: 0.6,
+  },
+  commentMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.12)',
+  },
+  likeButtonText: {
+    fontSize: 12,
   },
   clusterSheet: {
     width: '100%',
@@ -1529,6 +1722,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.12)',
   },
   clusterLikeText: {
     fontSize: 12,

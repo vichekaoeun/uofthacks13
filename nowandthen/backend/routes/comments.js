@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const commentController = require('../controller/commentController');
+const authMiddleware = require('../middleware/auth');
 
 const uploadsDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -28,6 +29,9 @@ router.get('/', commentController.getComments);
 
 // POST /api/comments
 router.post('/', commentController.createComment);
+
+// POST /api/comments/:commentId/like
+router.post('/:commentId/like', authMiddleware, commentController.toggleLike);
 
 // POST /api/comments/upload
 router.post('/upload', upload.single('file'), commentController.uploadMedia);
