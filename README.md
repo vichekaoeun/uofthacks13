@@ -3,7 +3,7 @@
 **Discover the identity of places through the memories people leave behind.**
 
 ## Demo
-[Demo Video](https://www.youtube.com/watch?v=VIDEO_ID](https://www.youtube.com/watch?v=zJKlMqIgn7k)
+[![NowAndThen Demo](https://img.youtube.com/vi/zJKlMqIgn7k/maxresdefault.jpg)](https://www.youtube.com/watch?v=zJKlMqIgn7k)
 
 NowAndThen is a location-based map where nearby comments appear as you move. Add your own memory at a spot, explore what others left around you, and watch places build their identity over time.
 
